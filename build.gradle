@@ -1,0 +1,25 @@
+group 'com.sbuslab'
+
+apply plugin: 'scala'
+
+repositories {
+    mavenCentral()
+    jcenter()
+}
+
+dependencies {
+    compile 'org.scala-lang:scala-library:2.12.5'
+    compile 'org.scala-lang.modules:scala-java8-compat_2.12:0.8.0'
+
+    compile 'com.typesafe.akka:akka-actor_2.12:2.5.12'
+    compile 'com.typesafe.akka:akka-slf4j_2.12:2.5.12'
+
+    compile 'com.fasterxml.jackson.core:jackson-databind:2.9.5'
+
+    compile 'com.rabbitmq:amqp-client:5.2.0'
+    compile 'eu.shiftforward:amqp-client_2.12:1.6.2'
+
+    compile 'io.prometheus:simpleclient:0.3.0'
+
+    compile 'com.typesafe.scala-logging:scala-logging_2.12:3.9.0'
+}
