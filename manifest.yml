@@ -1,9 +1,0 @@
-info:
-  name: sbus
-  version: "1.0"
-
-include:
-  - file: /etc/serve/include.d/library.yml
-
-build:
-  - gradle: publish

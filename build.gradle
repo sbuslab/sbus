@@ -1,6 +1,24 @@
 group 'com.sbuslab'
 
 apply plugin: 'scala'
+apply plugin: 'ivy-publish'
+
+publishing {
+    publications {
+        ivyJava(IvyPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        ivy {
+            credentials {
+                username 'ivy'
+                password System.env.IVY_PASSWORD
+            }
+            url 'http://uploads-repo.sbuslab.com/ivy'
+        }
+    }
+}
 
 repositories {
     mavenCentral()
