@@ -263,7 +263,10 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
     if (responseClass == classOf[java.lang.Void] || responseClass == java.lang.Void.TYPE || responseClass.isInstance(Unit)) {
       // return nothing
     } else {
-      mapper.treeToValue(node, responseClass)
+      try mapper.treeToValue(node, responseClass) catch {
+        case e: Throwable ⇒
+          throw new BadRequestError(s"Can't deserialize $node to $responseClass: ${e.getMessage}", e)
+      }
     }
   }
 
