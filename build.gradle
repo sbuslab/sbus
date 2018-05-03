@@ -1,28 +1,67 @@
-group 'com.sbuslab'
-
-apply plugin: 'scala'
-apply plugin: 'ivy-publish'
-
-publishing {
-    publications {
-        ivyJava(IvyPublication) {
-            from components.java
-        }
-    }
+buildscript {
     repositories {
-        ivy {
-            credentials {
-                username 'ivy'
-                password System.env.IVY_PASSWORD
-            }
-            url 'http://uploads-repo.sbuslab.com/ivy'
-        }
+        jcenter()
+    }
+    dependencies {
+        classpath 'com.bmuschko:gradle-nexus-plugin:2.3.1'
     }
 }
+
+plugins {
+    id 'io.codearte.nexus-staging' version '0.11.0'
+}
+
+apply plugin: 'scala'
+apply plugin: 'com.bmuschko.nexus'
+
+group 'com.sbuslab'
 
 repositories {
     mavenCentral()
     jcenter()
+}
+
+extraArchive {
+    sources = true
+}
+
+nexus {
+    sign = true
+    repositoryUrl = 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
+    snapshotRepositoryUrl = 'https://oss.sonatype.org/content/repositories/snapshots/'
+}
+
+nexusStaging {
+    packageGroup = 'com.sbuslab'
+    stagingProfileId = '3eeedfb73a4d9e'
+}
+
+modifyPom {
+    project {
+        name 'sbus'
+        description 'Multitransport service bus'
+        url 'https://github.com/sbuslab/sbus'
+        inceptionYear '2018'
+        scm {
+            url 'https://github.com/sbuslab/sbus'
+            connection 'scm:https://github.com/sbuslab/sbus.git'
+            developerConnection 'scm:git://github.com/sbuslab/sbus.git'
+        }
+        licenses {
+            license {
+                name 'The Apache Software License, Version 2.0'
+                url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                distribution 'repo'
+            }
+        }
+        developers {
+            developer {
+                id 'kulikovd'
+                name 'Dmitry Kulikov'
+                email 'kulikov.dm@gmail.com'
+            }
+        }
+    }
 }
 
 dependencies {

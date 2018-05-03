@@ -5,3 +5,6 @@
 gradle/
 build/
 out/
+
+secret-keys.gpg
+gradle.properties
