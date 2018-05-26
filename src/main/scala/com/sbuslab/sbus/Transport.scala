@@ -1,4 +1,4 @@
-package com.sbuslab.model
+package com.sbuslab.sbus
 
 import scala.concurrent.{ExecutionContext, Future}
 

@@ -4,7 +4,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.function.BiFunction
 import scala.compat.java8.FutureConverters._
 
-import com.sbuslab.model.{Context, Transport}
+import com.sbuslab.sbus.{Context, Transport}
 
 
 class Sbus(transport: Transport) {

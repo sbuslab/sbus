@@ -3,8 +3,6 @@ package com.sbuslab.sbus
 import scala.concurrent.{ExecutionContext, Future}
 import scala.reflect.ClassTag
 
-import com.sbuslab.model.{Context, Transport}
-
 
 class Sbus(transport: Transport)(implicit ec: ExecutionContext) {
 

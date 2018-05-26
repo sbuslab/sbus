@@ -1,4 +1,4 @@
-package com.sbuslab.model
+package com.sbuslab.sbus
 
 import java.util.UUID
 import scala.collection.JavaConverters._

@@ -21,6 +21,7 @@ import com.typesafe.scalalogging.Logger
 import org.slf4j.{LoggerFactory, MDC}
 
 import com.sbuslab.model._
+import com.sbuslab.sbus.{Context, Headers, Transport}
 
 
 class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMapper) extends Transport {
@@ -98,7 +99,8 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       .headers(Map(
         Headers.CorrelationId → corrId,
         Headers.RetryAttemptsMax → context.maxRetries.getOrElse(if (responseClass != null) 0 else DefaultCommandRetries), // commands retriable by default
-        Headers.ExpiredAt → context.timeout.map(_ + System.currentTimeMillis()).getOrElse(null)
+        Headers.ExpiredAt → context.timeout.map(_ + System.currentTimeMillis()).getOrElse(null),
+        Headers.Timestamp → System.currentTimeMillis()
       ).filter(_._2 != null).mapValues(_.toString.asInstanceOf[Object]).asJava)
 
     logs("~~~>", routingKey, bytes, corrId)
