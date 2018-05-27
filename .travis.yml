@@ -3,6 +3,8 @@ language: java
 jdk:
   - oraclejdk8
 
+install: true
+
 script: gradle test uploadArchives closeAndReleaseRepository -Pversion="1.0.${TRAVIS_BUILD_NUMBER}"
   --refresh-dependencies
 
