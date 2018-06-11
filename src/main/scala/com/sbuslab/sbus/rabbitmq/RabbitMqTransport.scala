@@ -35,6 +35,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
   private val DefaultCommandRetries = conf.getInt("default-command-retries")
   private val ChannelParams         = Amqp.ChannelParameters(qos = conf.getInt("prefetch-count"), global = false)
   private val CommonExchange        = Amqp.ExchangeParameters(conf.getString("exchange"), passive = false, exchangeType = "direct")
+  private val EventExchange         = Amqp.ExchangeParameters(conf.getString("event-exchange"), passive = false, exchangeType = "direct")
   private val RetryExchange         = Amqp.ExchangeParameters(conf.getString("retry-exchange"), passive = false, exchangeType = "fanout")
 
   private val queueConfigs: Map[String, QueueConfig] =
@@ -63,6 +64,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
     for {
       _ ← channelOwner ? Amqp.DeclareExchange(CommonExchange)
       _ ← channelOwner ? Amqp.DeclareExchange(RetryExchange)
+      _ ← channelOwner ? Amqp.DeclareExchange(EventExchange)
 
       _ ← channelOwner ? Amqp.DeclareQueue(
         Amqp.QueueParameters("retries", passive = false, durable = true, exclusive = false, autodelete = false, args = Map("x-dead-letter-exchange" → CommonExchange.name)))
@@ -83,7 +85,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
   /**
    *
    */
-  def send(routingKey: String, msg: Any, context: Context, responseClass: Class[_]): Future[Any] = {
+  def send(routingKey: String, msg: Any, context: Context, responseClass: Class[_], isEvent: Boolean = false): Future[Any] = {
     val bytes = mapper.writeValueAsBytes(new Message(routingKey, msg))
 
     val corrId = Option(context.correlationId).getOrElse(UUID.randomUUID().toString)
@@ -105,7 +107,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
 
     logs("~~~>", routingKey, bytes, corrId)
 
-    val pub = Amqp.Publish(CommonExchange.name, routingKey, bytes, Some(propsBldr.build()))
+    val pub = Amqp.Publish(if (isEvent) EventExchange.name else CommonExchange.name, routingKey, bytes, Some(propsBldr.build()))
 
     (if (responseClass != null) {
       meter("request", routingKey) {
