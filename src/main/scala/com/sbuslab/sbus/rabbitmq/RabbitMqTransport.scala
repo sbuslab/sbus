@@ -35,18 +35,24 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
   private val DefaultCommandRetries = conf.getInt("default-command-retries")
   private val ChannelParams         = Amqp.ChannelParameters(qos = conf.getInt("prefetch-count"), global = false)
   private val CommonExchange        = Amqp.ExchangeParameters(conf.getString("exchange"), passive = false, exchangeType = "direct")
-  private val EventExchange         = Amqp.ExchangeParameters(conf.getString("event-exchange"), passive = false, exchangeType = "direct")
+  private val EventExchange         = Amqp.ExchangeParameters(conf.getString("event-exchange"), passive = false, exchangeType = "topic")
   private val RetryExchange         = Amqp.ExchangeParameters(conf.getString("retry-exchange"), passive = false, exchangeType = "fanout")
 
-  private val queueConfigs: Map[String, QueueConfig] =
-    conf.getConfig("queues").atPath("/").getObject("/").asScala.toMap map { case (name, obj) ⇒
-      val cfg = obj.atPath("/").getConfig("/")
+  private val queueConfigs = conf.getConfig("queues").atPath("/").getObject("/").asScala.toMap mapValues(_.atPath("/").getConfig("/"))
 
-      name → QueueConfig(
-        name   = name,
-        fanout = if (cfg.hasPath("fanout")) cfg.getBoolean("fanout") else false
-      )
-    }
+  private def queueConfig(name: String): QueueConfig = {
+    val cfg = queueConfigs.get(name).orNull
+
+    QueueConfig(
+      name         = if (cfg != null && cfg.hasPath("name")) cfg.getString("name") else name,
+      durable      = if (cfg != null && cfg.hasPath("durable")) cfg.getBoolean("durable") else false,
+      exclusive    = if (cfg != null && cfg.hasPath("exclusive")) cfg.getBoolean("exclusive") else false,
+      autodelete   = if (cfg != null && cfg.hasPath("autodelete")) cfg.getBoolean("autodelete") else false,
+      exchange     = if (cfg != null && cfg.hasPath("exchange")) cfg.getString("exchange") else CommonExchange.name,
+      exchangeType = if (cfg != null && cfg.hasPath("exchange-type")) cfg.getString("exchange-type") else CommonExchange.exchangeType,
+      routingKey   = if (cfg != null && cfg.hasPath("routing-key")) cfg.getString("routing-key") else name
+    )
+  }
 
   private val connection = actorSystem.actorOf(ConnectionOwner.props({
     log.debug("Sbus connecting to: " + conf.getString("host"))
@@ -242,23 +248,23 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       }
     }
 
-    val queue = queueConfigs.get(routingKey) match {
-      case Some(qcfg) if qcfg.fanout ⇒
-        Amqp.QueueParameters("", passive = false, durable = false, exclusive = true, autodelete = true)
-
-      case _ ⇒
-        Amqp.QueueParameters(routingKey, passive = false, durable = false, exclusive = false, autodelete = false)
-    }
+    val qcfg = queueConfig(routingKey)
 
     val rpcServer = ConnectionOwner.createChildActor(connection, RpcServer.props(
-      queue         = queue,
-      exchange      = CommonExchange,
-      routingKey    = routingKey,
+      queue = Amqp.QueueParameters(
+        name       = qcfg.name,
+        passive    = false,
+        durable    = qcfg.durable,
+        exclusive  = qcfg.exclusive,
+        autodelete = qcfg.autodelete
+      ),
+      exchange      = Amqp.ExchangeParameters(qcfg.exchange, passive = false, exchangeType = qcfg.exchangeType),
+      routingKey    = qcfg.routingKey,
       proc          = processor,
       channelParams = ChannelParams
     ))
 
-    log.debug("Sbus subscribed to: " + routingKey)
+    log.debug(s"Sbus subscribed to: $routingKey / $qcfg")
 
     Amqp.waitForConnection(actorSystem, rpcServer).await()
   }
@@ -303,5 +309,10 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
 
 case class QueueConfig(
   name: String,
-  fanout: Boolean
+  durable: Boolean,
+  exclusive: Boolean,
+  autodelete: Boolean,
+  exchange: String,
+  exchangeType: String,
+  routingKey: String
 )
