@@ -18,6 +18,7 @@ case class Context(data: Map[String, Any] = Map.empty) {
   def correlationId: String   = get(Headers.CorrelationId).map(_.toString).orNull
   def messageId: String       = get(Headers.MessageId).map(_.toString).orNull
   def routingKey: String      = get(Headers.RoutingKey).map(_.toString).orNull
+  def timestamp: Option[Long] = get(Headers.Timestamp).map(_.toString.toLong)
 
   def withValue(key: String, value: Any): Context =
     if (value == null) {
