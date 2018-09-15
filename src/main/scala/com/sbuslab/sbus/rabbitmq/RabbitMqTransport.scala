@@ -32,6 +32,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
 
   implicit val defaultTimeout = Timeout(conf.getDuration("default-timeout").toMillis, TimeUnit.MILLISECONDS)
 
+  private val LogTrimLength         = conf.getInt("log-trim-length")
   private val DefaultCommandRetries = conf.getInt("default-command-retries")
   private val ChannelParams         = Amqp.ChannelParameters(qos = conf.getInt("prefetch-count"), global = false)
   private val CommonExchange        = Amqp.ExchangeParameters(conf.getString("exchange"), passive = false, exchangeType = "direct")
@@ -293,7 +294,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
     if (log.underlying.isTraceEnabled) {
       MDC.put("correlation_id", correlationId)
 
-      val msg = s"sbus $prefix $routingKey: ${new String(body.take(conf.getInt("log-trim-length")))}"
+      val msg = s"sbus $prefix $routingKey: ${new String(body.take(LogTrimLength))}"
 
       if (e == null) {
         log.trace(msg)
