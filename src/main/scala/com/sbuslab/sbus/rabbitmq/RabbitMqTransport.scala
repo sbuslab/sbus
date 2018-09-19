@@ -14,8 +14,8 @@ import akka.util.Timeout
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import com.github.sstone.amqp._
-import com.rabbitmq.client.ConnectionFactory
 import com.rabbitmq.client.AMQP.BasicProperties
+import com.rabbitmq.client.ConnectionFactory
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.Logger
 import org.slf4j.{LoggerFactory, MDC}
@@ -29,6 +29,13 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
   implicit val ec = actorSystem.dispatcher
 
   private val log = Logger(LoggerFactory.getLogger("sbus.rabbitmq"))
+
+  private val jsonWriter =
+    if (conf.getBoolean("pretty-json")) {
+      mapper.writerWithDefaultPrettyPrinter()
+    } else {
+      mapper.writer()
+    }
 
   implicit val defaultTimeout = Timeout(conf.getDuration("default-timeout").toMillis, TimeUnit.MILLISECONDS)
 
@@ -93,7 +100,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
    *
    */
   def send(routingKey: String, msg: Any, context: Context, responseClass: Class[_], isEvent: Boolean = false): Future[Any] = {
-    val bytes = mapper.writeValueAsBytes(new Message(routingKey, msg))
+    val bytes = jsonWriter.writeValueAsBytes(new Message(routingKey, msg))
 
     val corrId = Option(context.correlationId).getOrElse(UUID.randomUUID().toString)
 
@@ -180,7 +187,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
             case e: Throwable ⇒ Future.failed(e)
           }) map {
             case result if delivery.properties.getReplyTo != null ⇒
-              val bytes = mapper.writeValueAsBytes(new Response(200, result))
+              val bytes = jsonWriter.writeValueAsBytes(new Response(200, result))
               logs("resp ~~~>", routingKey, bytes, getCorrelationId(delivery))
               RpcServer.ProcessResult(Some(bytes))
 
@@ -237,10 +244,10 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
         if (delivery.properties.getReplyTo != null) {
           val response = e match {
             case em: ErrorMessage ⇒ new Response(em.code, new ErrorResponseBody(em.getMessage, em.error, em._links))
-            case _                ⇒ new Response(500, new ErrorResponseBody(e.getMessage, null, null))
+            case _                ⇒ new Response(500, new ErrorResponseBody(e.toString, null, null))
           }
 
-          val bytes = mapper.writeValueAsBytes(response)
+          val bytes = jsonWriter.writeValueAsBytes(response)
           logs("resp ~~~>", routingKey, bytes, getCorrelationId(delivery))
           RpcServer.ProcessResult(Some(bytes))
         } else {
