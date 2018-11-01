@@ -13,7 +13,7 @@ class Sbus(transport: Transport)(implicit ec: ExecutionContext) {
     transport.send(routingKey, msg, context, null).map(_ ⇒ {})
 
   def event(routingKey: String, msg: Any)(implicit context: Context = Context.empty): Future[Unit] =
-    transport.send(routingKey, msg, context, null, isEvent = true).map(_ ⇒ {})
+    transport.send("events:" + routingKey, msg, context, null).map(_ ⇒ {})
 
   def on[T, R](routingKey: String)(handler: (T, Context) ⇒ Future[R])(implicit tag: ClassTag[T]): Unit =
     transport.subscribe[T](routingKey, tag.runtimeClass, handler)
