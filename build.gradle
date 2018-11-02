@@ -8,7 +8,7 @@ buildscript {
 }
 
 plugins {
-    id 'io.codearte.nexus-staging' version '0.11.0' apply false
+    id 'io.codearte.nexus-staging' version '0.12.0' apply false
 }
 
 apply plugin: 'scala'
@@ -26,18 +26,14 @@ extraArchive {
     sources = true
 }
 
-nexus {
-    sign = true
-    repositoryUrl = 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
-    snapshotRepositoryUrl = 'https://oss.sonatype.org/content/repositories/snapshots/'
-}
-
 if (this.parent == null) {
     apply plugin: 'io.codearte.nexus-staging'
 
     nexusStaging {
         packageGroup = 'com.sbuslab'
         stagingProfileId = '3eeedfb73a4d9e'
+        numberOfRetries = 40
+        delayBetweenRetriesInMillis = 5000
     }
 }
 

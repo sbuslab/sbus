@@ -6,7 +6,7 @@ jdk:
 install: true
 
 script: gradle test uploadArchives closeAndReleaseRepository -Pversion="1.1.${TRAVIS_BUILD_NUMBER}"
-  --refresh-dependencies
+  --refresh-dependencies --info
 
 cache:
   directories:
