@@ -13,6 +13,7 @@ import akka.pattern.{ask, AskTimeoutException}
 import akka.util.Timeout
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
+import com.github.sstone.amqp.Amqp.{AddBinding, Binding}
 import com.github.sstone.amqp._
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.ConnectionFactory
@@ -58,7 +59,8 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       autodelete   = if (cfg != null && cfg.hasPath("autodelete")) cfg.getBoolean("autodelete") else false,
       exchange     = if (cfg != null && cfg.hasPath("exchange")) cfg.getString("exchange") else CommonExchange.name,
       exchangeType = if (cfg != null && cfg.hasPath("exchange-type")) cfg.getString("exchange-type") else CommonExchange.exchangeType,
-      routingKey   = if (cfg != null && cfg.hasPath("routing-key")) cfg.getString("routing-key") else name
+      routingKey   = if (cfg != null && cfg.hasPath("routing-key")) cfg.getString("routing-key") else name,
+      routingKeys  = if (cfg != null && cfg.hasPath("routing-keys")) cfg.getStringList("routing-keys").asScala.toList else null
     )
   }
 
@@ -258,22 +260,36 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
 
     val qcfg = queueConfig(routingKey)
 
-    val rpcServer = ConnectionOwner.createChildActor(connection, RpcServer.props(
-      queue = Amqp.QueueParameters(
-        name       = qcfg.name,
-        passive    = false,
-        durable    = qcfg.durable,
-        exclusive  = qcfg.exclusive,
-        autodelete = qcfg.autodelete
-      ),
-      exchange      = Amqp.ExchangeParameters(qcfg.exchange, passive = false, exchangeType = qcfg.exchangeType),
-      routingKey    = qcfg.routingKey,
-      proc          = processor,
-      channelParams = ChannelParams
-    ))
+    val queueParameters = Amqp.QueueParameters(
+      name       = qcfg.name,
+      passive    = false,
+      durable    = qcfg.durable,
+      exclusive  = qcfg.exclusive,
+      autodelete = qcfg.autodelete
+    )
 
-    log.debug(s"Sbus subscribed to: $routingKey / $qcfg")
+    val exchangeParameters = Amqp.ExchangeParameters(qcfg.exchange, passive = false, exchangeType = qcfg.exchangeType)
 
+    val props = if (qcfg.routingKeys == null) {
+      RpcServer.props(
+        queue         = queueParameters,
+        exchange      = exchangeParameters,
+        routingKey    = qcfg.routingKey,
+        proc          = processor,
+        channelParams = ChannelParams
+      )
+    } else {
+      val bindings = qcfg.routingKeys.map(rk ⇒ AddBinding(Binding(exchangeParameters, queueParameters, rk)))
+      RpcServer.props(
+        processor = processor,
+        bindings,
+        Some(ChannelParams)
+      )
+    }
+    val rpcServer = ConnectionOwner.createChildActor(connection, props)
+
+    val routing = if(qcfg.routingKeys == null) routingKey else qcfg.routingKeys
+    log.debug(s"Sbus subscribed to: $routing / $qcfg")
     Amqp.waitForConnection(actorSystem, rpcServer).await()
   }
 
@@ -316,11 +332,12 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
 
 
 case class QueueConfig(
-  name: String,
-  durable: Boolean,
-  exclusive: Boolean,
-  autodelete: Boolean,
-  exchange: String,
-  exchangeType: String,
-  routingKey: String
-)
+                        name: String,
+                        durable: Boolean,
+                        exclusive: Boolean,
+                        autodelete: Boolean,
+                        exchange: String,
+                        exchangeType: String,
+                        routingKey: String,
+                        routingKeys: List[String]
+                      )
