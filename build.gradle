@@ -22,16 +22,6 @@ repositories {
     jcenter()
 }
 
-extraArchive {
-    sources = true
-}
-
-nexus {
-    sign = true
-    repositoryUrl = 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
-    snapshotRepositoryUrl = 'https://oss.sonatype.org/content/repositories/snapshots/'
-}
-
 if (this.parent == null) {
     apply plugin: 'io.codearte.nexus-staging'
 
