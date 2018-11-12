@@ -22,18 +22,12 @@ repositories {
     jcenter()
 }
 
-extraArchive {
-    sources = true
-}
-
 if (this.parent == null) {
     apply plugin: 'io.codearte.nexus-staging'
 
     nexusStaging {
         packageGroup = 'com.sbuslab'
         stagingProfileId = '3eeedfb73a4d9e'
-        numberOfRetries = 40
-        delayBetweenRetriesInMillis = 5000
     }
 }
 
@@ -66,7 +60,7 @@ modifyPom {
 }
 
 dependencies {
-    compile 'com.sbuslab:model:[1.0.0,)'
+    compile 'com.sbuslab:model:[1.0.0,1.1.0)'
 
     compile 'com.typesafe.akka:akka-actor_2.12:2.5.12'
     compile 'com.typesafe.akka:akka-slf4j_2.12:2.5.12'
