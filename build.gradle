@@ -22,10 +22,6 @@ repositories {
     jcenter()
 }
 
-extraArchive {
-    sources = true
-}
-
 nexus {
     sign = true
     repositoryUrl = 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
@@ -70,7 +66,7 @@ modifyPom {
 }
 
 dependencies {
-    compile 'com.sbuslab:model:1.0.+'
+    compile 'com.sbuslab:model:[1.0.0,1.1.0)'
 
     compile 'com.typesafe.akka:akka-actor_2.12:2.5.12'
     compile 'com.typesafe.akka:akka-slf4j_2.12:2.5.12'
