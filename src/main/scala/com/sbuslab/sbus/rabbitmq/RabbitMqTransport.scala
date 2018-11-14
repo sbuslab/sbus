@@ -82,7 +82,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
         durable         = cfg.getBoolean("durable"),
         exclusive       = cfg.getBoolean("exclusive"),
         autodelete      = cfg.getBoolean("autodelete"),
-        routingKey      = Option(cfg.getString("routing-key")).filter(_.trim.nonEmpty)
+        routingKeys      = Option(cfg.getStringList("routing-keys").asScala.toList).filter(_.nonEmpty)
       )
     }
   }
@@ -180,13 +180,13 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
     require(messageClass != null, "messageClass is required!")
 
     val channel = getChannel(routingKey)
-    val realRoutingKey = routingKey.split(':').last
+    val subscriptionName = routingKey.split(':').last
 
     val processor = new RpcServer.IProcessor {
       def process(delivery: Amqp.Delivery): Future[RpcServer.ProcessResult] =
-        meter("handle", realRoutingKey) {
+        meter("handle", subscriptionName) {
           (try {
-            logs("<~~~", realRoutingKey, delivery.body, getCorrelationId(delivery))
+            logs("<~~~", subscriptionName, delivery.body, getCorrelationId(delivery))
 
             val payload = (Option(mapper.readTree(delivery.body)).map(_.get("body")).orNull match {
               case null ⇒ null
@@ -199,7 +199,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
           }) map {
             case result if delivery.properties.getReplyTo != null ⇒
               val bytes = jsonWriter.writeValueAsBytes(new Response(200, result))
-              logs("resp ~~~>", realRoutingKey, bytes, getCorrelationId(delivery))
+              logs("resp ~~~>", subscriptionName, bytes, getCorrelationId(delivery))
               RpcServer.ProcessResult(Some(bytes))
 
             case _ ⇒ RpcServer.ProcessResult(None)
@@ -229,14 +229,14 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
 
                 // if message will be expired before next attempt — skip it
                 if (Option(heads.get(Headers.ExpiredAt)).exists(_.toString.toLong <= System.currentTimeMillis() + backoff)) {
-                  logs("timeout", realRoutingKey, s"Message will be expired at ${heads.get(Headers.ExpiredAt)}, don't retry it!".getBytes, getCorrelationId(delivery), e)
+                  logs("timeout", subscriptionName, s"Message will be expired at ${heads.get(Headers.ExpiredAt)}, don't retry it!".getBytes, getCorrelationId(delivery), e)
                   Future.failed(e)
                 } else {
-                  logs("error", realRoutingKey, s"$e. Retry attempt ${attemptNr + 1} after ${updProps.getExpiration} millis...".getBytes, getCorrelationId(delivery), e)
+                  logs("error", subscriptionName, s"$e. Retry attempt ${attemptNr + 1} after ${updProps.getExpiration} millis...".getBytes, getCorrelationId(delivery), e)
 
                   channel.producer ? Amqp.Publish(channel.retryExchange, delivery.envelope.getRoutingKey, delivery.body, Some(updProps), mandatory = false) map {
                     case _: Amqp.Ok ⇒ RpcServer.ProcessResult(None)
-                    case error      ⇒ throw new InternalServerError("Error on publish retry message for " + realRoutingKey + ": " + error)
+                    case error      ⇒ throw new InternalServerError("Error on publish retry message for " + subscriptionName + ": " + error)
                   }
                 }
               } else {
@@ -250,7 +250,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
         }
 
       def onFailure(delivery: Amqp.Delivery, e: Throwable): RpcServer.ProcessResult = {
-        logs("error", realRoutingKey, e.toString.getBytes, getCorrelationId(delivery), e)
+        logs("error", subscriptionName, e.toString.getBytes, getCorrelationId(delivery), e)
 
         if (delivery.properties.getReplyTo != null) {
           val response = e match {
@@ -259,7 +259,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
           }
 
           val bytes = jsonWriter.writeValueAsBytes(response)
-          logs("resp ~~~>", realRoutingKey, bytes, getCorrelationId(delivery))
+          logs("resp ~~~>", subscriptionName, bytes, getCorrelationId(delivery))
           RpcServer.ProcessResult(Some(bytes))
         } else {
           RpcServer.ProcessResult(None)
@@ -268,20 +268,24 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
     }
 
     val rpcServer = ConnectionOwner.createChildActor(connection, RpcServer.props(
-      queue = Amqp.QueueParameters(
-        name       = channel.queueNameFormat.format(realRoutingKey),
-        passive    = false,
-        durable    = channel.durable,
-        exclusive  = channel.exclusive,
-        autodelete = channel.autodelete
-      ),
-      exchange      = Amqp.ExchangeParameters(channel.exchange, passive = false, exchangeType = channel.exchangeType),
-      routingKey    = channel.routingKey.getOrElse(realRoutingKey),
-      proc          = processor,
-      channelParams = ChannelParams
+      processor = processor,
+      init = channel.routingKeys.getOrElse(List(subscriptionName)) map { rk ⇒
+        Amqp.AddBinding(Amqp.Binding(
+          Amqp.ExchangeParameters(channel.exchange, passive = false, exchangeType = channel.exchangeType),
+          Amqp.QueueParameters(
+            name       = channel.queueNameFormat.format(subscriptionName),
+            passive    = false,
+            durable    = channel.durable,
+            exclusive  = channel.exclusive,
+            autodelete = channel.autodelete
+          ),
+          rk
+        ))
+      },
+      channelParams = Some(ChannelParams)
     ))
 
-    log.debug(s"Sbus subscribed to: $realRoutingKey / $channel")
+    log.debug(s"Sbus subscribed to: $subscriptionName / $channel")
 
     Amqp.waitForConnection(actorSystem, rpcServer).await()
   }
@@ -344,5 +348,5 @@ case class SbusChannel(
   durable: Boolean,
   exclusive: Boolean,
   autodelete: Boolean,
-  routingKey: Option[String]
+  routingKeys: Option[List[String]]
 )
