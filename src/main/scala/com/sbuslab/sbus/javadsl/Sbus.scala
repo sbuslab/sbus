@@ -37,7 +37,8 @@ class Sbus(transport: Transport) {
     event(routingKey, message, Context.empty)
 
   def event(routingKey: String, message: Any, context: Context): CompletableFuture[Void] =
-    transport.send("events:" + routingKey, message, context, null).toJava.toCompletableFuture.thenAccept(_ ⇒ {})
+    transport.send((if (!routingKey.contains(':')) "events:" else "") + routingKey, message, context, null)
+      .toJava.toCompletableFuture.thenAccept(_ ⇒ {})
 
   def on[T](routingKey: String, requestClass: Class[T], handler: BiFunction[T, Context, CompletableFuture[_]]) {
     transport.subscribe[T](routingKey, requestClass, { (resp, ctx) ⇒
