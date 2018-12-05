@@ -121,7 +121,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       })
       .headers(Map(
         Headers.CorrelationId → corrId,
-        Headers.RetryAttemptsMax → context.maxRetries.getOrElse(if (responseClass != null) 0 else DefaultCommandRetries), // commands retriable by default
+        Headers.RetryAttemptsMax → context.maxRetries.getOrElse(if (responseClass != null) null else DefaultCommandRetries), // commands retriable by default
         Headers.ExpiredAt → context.timeout.map(_ + System.currentTimeMillis()).getOrElse(null),
         Headers.Timestamp → System.currentTimeMillis()
       ).filter(_._2 != null).mapValues(_.toString.asInstanceOf[Object]).asJava)
@@ -149,7 +149,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
               deserializeToClass(tree.path("body"), responseClass)
             } else {
               val err = mapper.treeToValue(tree.path("body"), classOf[ErrorResponseBody])
-              throw ErrorMessage.fromCode(status, err.getMessage, null, err.getError, err.getLinks)
+              throw ErrorMessage.fromCode(status, err.getMessage, null, err.getError, err.getLinks, err.getEmbedded)
             }
 
           case other ⇒
@@ -254,8 +254,8 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
 
         if (delivery.properties.getReplyTo != null) {
           val response = e match {
-            case em: ErrorMessage ⇒ new Response(em.code, new ErrorResponseBody(em.getMessage, em.error, em._links))
-            case _                ⇒ new Response(500, new ErrorResponseBody(e.toString, null, null))
+            case em: ErrorMessage ⇒ new Response(em.code, new ErrorResponseBody(em.getMessage, em.error, em._links, em._embedded))
+            case _                ⇒ new Response(500, new ErrorResponseBody(e.toString, null, null, null))
           }
 
           val bytes = jsonWriter.writeValueAsBytes(response)

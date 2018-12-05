@@ -37,7 +37,9 @@ case class Context(data: Map[String, Any] = Map.empty) {
 
 
 object Context {
+
   private val emptyContext = Context()
+  private val passedHeaders = Set(Headers.CorrelationId, Headers.MessageId, Headers.RetryAttemptNr, Headers.Timestamp)
 
   def empty = emptyContext
   def withCorrelationId(id: String) = Context().withCorrelationId(id)
@@ -54,7 +56,7 @@ object Context {
     data += Headers.RoutingKey → delivery.envelope.getRoutingKey
 
     if (delivery.properties.getHeaders != null) {
-      data ++= delivery.properties.getHeaders.asScala.filterKeys(Headers.all)
+      data ++= delivery.properties.getHeaders.asScala.filterKeys(passedHeaders)
     }
 
     Context(data.result().filter(_._2 != null))

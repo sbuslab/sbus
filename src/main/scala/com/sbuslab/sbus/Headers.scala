@@ -10,6 +10,4 @@ object Headers {
   val Timeout = "timeout"
   val RoutingKey = "routing-key"
   val Timestamp = "timestamp"
-
-  val all = Set(CorrelationId, MessageId, RetryAttemptNr, RetryAttemptsMax, Timeout, Timestamp)
 }
