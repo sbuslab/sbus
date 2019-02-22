@@ -69,7 +69,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
         _ ← producer ? Amqp.DeclareQueue(
             Amqp.QueueParameters(retryExchange.name, passive = false, durable = true, exclusive = false, autodelete = false, args = Map("x-dead-letter-exchange" → exchange.name)))
 
-        _ ← producer ? Amqp.QueueBind(retryExchange.name, retryExchange.name, "#")
+        _ ← producer ? Amqp.QueueBind(retryExchange.name, retryExchange.name, Set("#"))
       } yield {}, 10.seconds)
 
       name → SbusChannel(
@@ -269,7 +269,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
 
     val rpcServer = ConnectionOwner.createChildActor(connection, RpcServer.props(
       processor = processor,
-      init = channel.routingKeys.getOrElse(List(subscriptionName)) map { rk ⇒
+      init = List(
         Amqp.AddBinding(Amqp.Binding(
           Amqp.ExchangeParameters(channel.exchange, passive = false, exchangeType = channel.exchangeType),
           Amqp.QueueParameters(
@@ -279,9 +279,9 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
             exclusive  = channel.exclusive,
             autodelete = channel.autodelete
           ),
-          rk
+          channel.routingKeys.getOrElse(List(subscriptionName)).toSet
         ))
-      },
+      ),
       channelParams = Some(ChannelParams)
     ))
 
