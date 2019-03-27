@@ -82,7 +82,8 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
         durable         = cfg.getBoolean("durable"),
         exclusive       = cfg.getBoolean("exclusive"),
         autodelete      = cfg.getBoolean("autodelete"),
-        routingKeys      = Option(cfg.getStringList("routing-keys").asScala.toList).filter(_.nonEmpty)
+        mandatory       = cfg.getBoolean("mandatory"),
+        routingKeys     = Option(cfg.getStringList("routing-keys").asScala.toList).filter(_.nonEmpty)
       )
     }
   }
@@ -128,7 +129,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
 
     logs("~~~>", realRoutingKey, bytes, corrId)
 
-    val pub = Amqp.Publish(channel.exchange, realRoutingKey, bytes, Some(propsBldr.build()))
+    val pub = Amqp.Publish(channel.exchange, realRoutingKey, bytes, Some(propsBldr.build()), mandatory = channel.mandatory)
 
     (if (responseClass != null) {
       meter("request", realRoutingKey) {
@@ -348,5 +349,6 @@ case class SbusChannel(
   durable: Boolean,
   exclusive: Boolean,
   autodelete: Boolean,
+  mandatory: Boolean,
   routingKeys: Option[List[String]]
 )
