@@ -324,6 +324,8 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       } else {
         log.error(msg, e)
       }
+
+      MDC.remove("correlation_id")
     }
   }
 }
