@@ -65,7 +65,7 @@ dependencies {
     compile 'com.typesafe.akka:akka-actor_2.12:2.5.21'
     compile 'com.typesafe.akka:akka-slf4j_2.12:2.5.21'
 
-    compile 'com.rabbitmq:amqp-client:5.6.0'
+    compile 'com.rabbitmq:amqp-client:5.7.0'
     compile 'eu.shiftforward:amqp-client_2.12:1.6.3'
 
     compile 'io.prometheus:simpleclient:0.6.0'
