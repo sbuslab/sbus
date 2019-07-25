@@ -127,7 +127,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
         Headers.Timestamp → System.currentTimeMillis()
       ).filter(_._2 != null).mapValues(_.toString.asInstanceOf[Object]).asJava)
 
-    logs("~~~>", realRoutingKey, bytes, corrId)
+    logs("~~~>", realRoutingKey, bytes, corrId, ip = context.data.get("ip").map(_.toString).orNull)
 
     val pub = Amqp.Publish(channel.exchange, realRoutingKey, bytes, Some(propsBldr.build()), mandatory = channel.mandatory)
 
@@ -311,9 +311,10 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
     } else null
   }
 
-  private def logs(prefix: String, routingKey: String, body: Array[Byte], correlationId: String, e: Throwable = null) {
+  private def logs(prefix: String, routingKey: String, body: Array[Byte], correlationId: String, e: Throwable = null, ip: String = null) {
     if (log.underlying.isTraceEnabled) {
       MDC.put("correlation_id", correlationId)
+      MDC.put("http_x_forwarded_for", ip)
 
       val msg = s"sbus $prefix $routingKey: ${new String(body.take(LogTrimLength))}"
 
@@ -326,6 +327,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       }
 
       MDC.remove("correlation_id")
+      MDC.remove("http_x_forwarded_for")
     }
   }
 }
