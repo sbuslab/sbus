@@ -19,6 +19,8 @@ case class Context(data: Map[String, Any] = Map.empty) {
   def messageId: String       = get(Headers.MessageId).map(_.toString).orNull
   def routingKey: String      = get(Headers.RoutingKey).map(_.toString).orNull
   def timestamp: Option[Long] = get(Headers.Timestamp).map(_.toString.toLong)
+  def ip: String              = get(Headers.Ip).map(_.toString).orNull
+  def userAgent: String       = get(Headers.UserAgent).map(_.toString).orNull
 
   def withValue(key: String, value: Any): Context =
     if (value == null) {
@@ -39,7 +41,7 @@ case class Context(data: Map[String, Any] = Map.empty) {
 object Context {
 
   private val emptyContext = Context()
-  private val passedHeaders = Set(Headers.CorrelationId, Headers.MessageId, Headers.RetryAttemptNr, Headers.Timestamp)
+  private val passedHeaders = Set(Headers.CorrelationId, Headers.MessageId, Headers.RetryAttemptNr, Headers.Timestamp, Headers.Ip, Headers.UserAgent)
 
   def empty = emptyContext
   def withCorrelationId(id: String) = Context().withCorrelationId(id)

@@ -10,4 +10,6 @@ object Headers {
   val Timeout = "timeout"
   val RoutingKey = "routing-key"
   val Timestamp = "timestamp"
+  val Ip = "ip"
+  val UserAgent = "userAgent"
 }

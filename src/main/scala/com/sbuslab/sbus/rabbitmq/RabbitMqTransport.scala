@@ -124,7 +124,9 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
         Headers.CorrelationId → corrId,
         Headers.RetryAttemptsMax → context.maxRetries.getOrElse(if (responseClass != null) null else DefaultCommandRetries), // commands retriable by default
         Headers.ExpiredAt → context.timeout.map(_ + System.currentTimeMillis()).getOrElse(null),
-        Headers.Timestamp → System.currentTimeMillis()
+        Headers.Timestamp → System.currentTimeMillis(),
+        Headers.Ip → context.data.get("ip").orNull,
+        Headers.UserAgent → context.data.get("userAgent").orNull
       ).filter(_._2 != null).mapValues(_.toString.asInstanceOf[Object]).asJava)
 
     logs("~~~>", realRoutingKey, bytes, corrId, ip = context.data.get("ip").map(_.toString).orNull)
