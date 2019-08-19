@@ -49,6 +49,8 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
     val cf = new ConnectionFactory()
     cf.setHost(conf.getString("host"))
     cf.setPort(conf.getInt("port"))
+    cf.setUsername(conf.getString("username"))
+    cf.setPassword(conf.getString("password"))
     cf
   }, 3.seconds), name = "rabbitmq-connection")
 
