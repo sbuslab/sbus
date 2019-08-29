@@ -123,12 +123,13 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
         case _ ⇒ null
       })
       .headers(Map(
-        Headers.CorrelationId → corrId,
+        Headers.CorrelationId    → corrId,
+        Headers.RoutingKey       → realRoutingKey,
         Headers.RetryAttemptsMax → context.maxRetries.getOrElse(if (responseClass != null) null else DefaultCommandRetries), // commands retriable by default
-        Headers.ExpiredAt → context.timeout.map(_ + System.currentTimeMillis()).getOrElse(null),
-        Headers.Timestamp → System.currentTimeMillis(),
-        Headers.Ip → context.data.get("ip").orNull,
-        Headers.UserAgent → context.data.get("userAgent").orNull
+        Headers.ExpiredAt        → context.timeout.map(_ + System.currentTimeMillis()).getOrElse(null),
+        Headers.Timestamp        → System.currentTimeMillis(),
+        Headers.Ip               → context.data.get("ip").orNull,
+        Headers.UserAgent        → context.data.get("userAgent").orNull
       ).filter(_._2 != null).mapValues(_.toString.asInstanceOf[Object]).asJava)
 
     logs("~~~>", realRoutingKey, bytes, corrId, ip = context.data.get("ip").map(_.toString).orNull)
@@ -218,14 +219,15 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
               throw new ConflictError(e.toString, e)
 
             case e: Throwable if !e.isInstanceOf[UnrecoverableFailure] ⇒
-              val heads       = Option(delivery.properties.getHeaders).getOrElse(new util.HashMap[String, Object]())
-              val attemptsMax = Option(heads.get(Headers.RetryAttemptsMax)).map(_.toString.toInt)
-              val attemptNr   = Option(heads.get(Headers.RetryAttemptNr)).fold(1)(_.toString.toInt)
+              val heads            = Option(delivery.properties.getHeaders).getOrElse(new util.HashMap[String, Object]())
+              val attemptsMax      = Option(heads.get(Headers.RetryAttemptsMax)).map(_.toString.toInt)
+              val attemptNr        = Option(heads.get(Headers.RetryAttemptNr)).fold(1)(_.toString.toInt)
+              val originRoutingKey = Option(heads.get(Headers.RoutingKey)).fold(delivery.envelope.getRoutingKey)(_.toString)
 
               if (attemptsMax.exists(_ >= attemptNr)) {
                 heads.put(Headers.RetryAttemptNr, s"${attemptNr + 1}")
 
-                val backoff = math.pow(2, math.min(attemptNr - 1, 7)).round * 1000
+                val backoff = math.pow(2, math.min(attemptNr - 1, 6)).round * 1000  // max 64 seconds
 
                 val updProps = delivery.properties.builder()
                   .headers(heads)
@@ -234,14 +236,14 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
 
                 // if message will be expired before next attempt — skip it
                 if (Option(heads.get(Headers.ExpiredAt)).exists(_.toString.toLong <= System.currentTimeMillis() + backoff)) {
-                  logs("timeout", subscriptionName, s"Message will be expired at ${heads.get(Headers.ExpiredAt)}, don't retry it!".getBytes, getCorrelationId(delivery), e)
+                  logs("timeout", originRoutingKey, s"Message will be expired at ${heads.get(Headers.ExpiredAt)}, don't retry it!".getBytes, getCorrelationId(delivery), e)
                   Future.failed(e)
                 } else {
-                  logs("error", subscriptionName, s"$e. Retry attempt ${attemptNr + 1} after ${updProps.getExpiration} millis...".getBytes, getCorrelationId(delivery), e)
+                  logs("error", originRoutingKey, s"$e. Retry attempt ${attemptNr} after ${updProps.getExpiration} millis...".getBytes, getCorrelationId(delivery), e)
 
-                  channel.producer ? Amqp.Publish(channel.retryExchange, delivery.envelope.getRoutingKey, delivery.body, Some(updProps), mandatory = false) map {
+                  channel.producer ? Amqp.Publish(channel.retryExchange, channel.queueNameFormat.format(originRoutingKey), delivery.body, Some(updProps), mandatory = false) map {
                     case _: Amqp.Ok ⇒ RpcServer.ProcessResult(None)
-                    case error      ⇒ throw new InternalServerError("Error on publish retry message for " + subscriptionName + ": " + error)
+                    case error      ⇒ throw new InternalServerError("Error on publish retry message for " + originRoutingKey + ": " + error)
                   }
                 }
               } else {
@@ -276,15 +278,17 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       processor = processor,
       init = List(
         Amqp.AddBinding(Amqp.Binding(
-          Amqp.ExchangeParameters(channel.exchange, passive = false, exchangeType = channel.exchangeType),
-          Amqp.QueueParameters(
+          exchange = Amqp.ExchangeParameters(channel.exchange, passive = false, exchangeType = channel.exchangeType),
+          queue = Amqp.QueueParameters(
             name       = channel.queueNameFormat.format(subscriptionName),
             passive    = false,
             durable    = channel.durable,
             exclusive  = channel.exclusive,
             autodelete = channel.autodelete
           ),
-          channel.routingKeys.getOrElse(List(subscriptionName)).toSet
+          routingKeys = channel.routingKeys.getOrElse(List(subscriptionName))
+            .flatMap(rtKey ⇒ List(rtKey, channel.queueNameFormat.format(rtKey)))  // add routingKey with channel prefix for handlling retried messages
+            .toSet
         ))
       ),
       channelParams = Some(ChannelParams)
