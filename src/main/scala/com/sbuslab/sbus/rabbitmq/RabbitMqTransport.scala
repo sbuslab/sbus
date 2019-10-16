@@ -250,9 +250,9 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
                 Future.failed(e)
               }
           } recover {
-            case e @ (_: CompletionException | _: ExecutionException) ⇒ onFailure(delivery, e.getCause)
+            case e @ (_: CompletionException | _: ExecutionException) if e.getCause != null ⇒ onFailure(delivery, e.getCause)
             case e: RuntimeException if e.getCause != null && !e.isInstanceOf[ErrorMessage] ⇒ onFailure(delivery, e.getCause)
-            case NonFatal(e: Exception) ⇒ onFailure(delivery, e)
+            case e: Throwable ⇒ onFailure(delivery, e)
           }
         }
 
@@ -320,7 +320,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
   }
 
   private def logs(prefix: String, routingKey: String, body: Array[Byte], correlationId: String, e: Throwable = null, ip: String = null) {
-    if (log.underlying.isTraceEnabled) {
+    if (e != null || log.underlying.isTraceEnabled) {
       MDC.put("correlation_id", correlationId)
       MDC.put("http_x_forwarded_for", ip)
 
