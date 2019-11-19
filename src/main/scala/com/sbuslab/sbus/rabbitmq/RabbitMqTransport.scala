@@ -174,7 +174,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
             if (status < 400) {
               val response = deserializeToClass(tree.path("body"), responseClass)
               logs("resp <~~~", realRoutingKey, jsonWriter.writeValueAsBytes(response), corrId)
-              deserializeToClass(tree.path("body"), responseClass)
+              response
             } else {
               val err = mapper.treeToValue(tree.path("body"), classOf[ErrorResponseBody])
               logs("resp <~~~", realRoutingKey, jsonWriter.writeValueAsBytes(err), corrId)
