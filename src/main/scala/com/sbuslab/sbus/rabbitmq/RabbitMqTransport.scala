@@ -1,19 +1,24 @@
 package com.sbuslab.sbus.rabbitmq
 
+import java.lang.reflect.ParameterizedType
 import java.util
 import java.util.UUID
 import java.util.concurrent.{CompletionException, ExecutionException, TimeUnit}
 import scala.collection.JavaConverters._
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
-import scala.util.control.NonFatal
 
 import akka.actor.{ActorRef, ActorSystem}
 import akka.pattern.{ask, AskTimeoutException}
 import akka.util.Timeout
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
+import com.fasterxml.jackson.databind.module.SimpleModule
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.github.sstone.amqp._
+import com.jayway.jsonpath.{Configuration, JsonPath}
+import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider
+import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.ConnectionFactory
 import com.typesafe.config.Config
@@ -29,6 +34,22 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
   implicit val ec = actorSystem.dispatcher
 
   private val log = Logger(LoggerFactory.getLogger("sbus.rabbitmq"))
+
+  private lazy val secureStringWriter = {
+    val m = mapper.copy()
+    val secureStringModule = new SimpleModule()
+    secureStringModule.addSerializer(classOf[SecureString], new SecureStringSerializer())
+    m.registerModule(secureStringModule)
+  }
+
+  private val configuration = Configuration.builder()
+    .jsonProvider(new JacksonJsonNodeJsonProvider())
+    .mappingProvider(new JacksonMappingProvider())
+    .build()
+
+  configuration.addOptions(com.jayway.jsonpath.Option.SUPPRESS_EXCEPTIONS)
+
+  private val jsonPath = JsonPath.using(configuration)
 
   private val jsonWriter =
     if (conf.getBoolean("pretty-json")) {
@@ -111,7 +132,8 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
     val channel = getChannel(routingKey)
     val realRoutingKey = routingKey.split(':').last // remove channel name prefix, if exists
 
-    val bytes  = jsonWriter.writeValueAsBytes(new Message(realRoutingKey, msg))
+    val logBytes  = jsonWriter.writeValueAsBytes(new Message(realRoutingKey, msg))
+    val sendBytes = secureStringWriter.writeValueAsBytes(new Message(realRoutingKey, msg))
     val corrId = Option(context.correlationId).getOrElse(UUID.randomUUID().toString)
 
     val propsBldr = new BasicProperties().builder()
@@ -132,16 +154,14 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
         Headers.UserAgent        → context.data.get("userAgent").orNull
       ).filter(_._2 != null).mapValues(_.toString.asInstanceOf[Object]).asJava)
 
-    logs("~~~>", realRoutingKey, bytes, corrId, ip = context.data.get("ip").map(_.toString).orNull)
+    logs("~~~>", realRoutingKey, logBytes, corrId, ip = context.data.get("ip").map(_.toString).orNull)
 
-    val pub = Amqp.Publish(channel.exchange, realRoutingKey, bytes, Some(propsBldr.build()), mandatory = channel.mandatory)
+    val pub = Amqp.Publish(channel.exchange, realRoutingKey, sendBytes, Some(propsBldr.build()), mandatory = channel.mandatory)
 
     (if (responseClass != null) {
       meter("request", realRoutingKey) {
         rpcClient.ask(RpcClient.Request(pub))(context.timeout.fold(defaultTimeout)(_.millis)) map {
           case RpcClient.Response(deliveries) ⇒
-            logs("resp <~~~", realRoutingKey, deliveries.head.body, corrId)
-
             val tree = mapper.readTree(deliveries.head.body)
 
             val status =
@@ -152,9 +172,12 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
               } else { 200 }
 
             if (status < 400) {
+              val response = deserializeToClass(tree.path("body"), responseClass)
+              logs("resp <~~~", realRoutingKey, jsonWriter.writeValueAsBytes(response), corrId)
               deserializeToClass(tree.path("body"), responseClass)
             } else {
               val err = mapper.treeToValue(tree.path("body"), classOf[ErrorResponseBody])
+              logs("resp <~~~", realRoutingKey, jsonWriter.writeValueAsBytes(err), corrId)
               throw ErrorMessage.fromCode(status, err.getMessage, null, err.getError, err.getLinks, err.getEmbedded)
             }
 
@@ -169,11 +192,11 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       }
     }) recover {
       case e: AskTimeoutException ⇒
-        logs("timeout error", realRoutingKey, bytes, corrId, e)
+        logs("timeout error", realRoutingKey, logBytes, corrId, e)
         throw new ErrorMessage(504, s"Timeout on `$realRoutingKey` with message ${msg.getClass.getSimpleName}", e)
 
       case e: Throwable ⇒
-        logs("error", realRoutingKey, bytes, corrId, e)
+        logs("error", realRoutingKey, logBytes, corrId, e)
         throw e
     }
   }
@@ -192,21 +215,24 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       def process(delivery: Amqp.Delivery): Future[RpcServer.ProcessResult] =
         meter("handle", subscriptionName) {
           (try {
-            logs("<~~~", subscriptionName, delivery.body, getCorrelationId(delivery))
-
             val payload = (Option(mapper.readTree(delivery.body)).map(_.get("body")).orNull match {
               case null ⇒ null
               case body ⇒ deserializeToClass(body, messageClass)
             }).asInstanceOf[T]
+
+            val logBytes  = jsonWriter.writeValueAsBytes(payload)
+            logs("<~~~", subscriptionName, logBytes, getCorrelationId(delivery))
 
             handler(payload, Context.from(delivery))
           } catch {
             case e: Throwable ⇒ Future.failed(e)
           }) map {
             case result if delivery.properties.getReplyTo != null ⇒
-              val bytes = jsonWriter.writeValueAsBytes(new Response(200, result))
-              logs("resp ~~~>", subscriptionName, bytes, getCorrelationId(delivery))
-              RpcServer.ProcessResult(Some(bytes))
+              val logBytes = jsonWriter.writeValueAsBytes(new Response(200, result))
+              val sendBytes = secureStringWriter.writeValueAsBytes(new Response(200, result))
+
+              logs("resp ~~~>", subscriptionName, logBytes, getCorrelationId(delivery))
+              RpcServer.ProcessResult(Some(sendBytes))
 
             case _ ⇒ RpcServer.ProcessResult(None)
           } recover {
@@ -265,9 +291,10 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
             case _                ⇒ new Response(500, new ErrorResponseBody(e.toString, null, null, null))
           }
 
-          val bytes = jsonWriter.writeValueAsBytes(response)
-          logs("resp ~~~>", subscriptionName, bytes, getCorrelationId(delivery))
-          RpcServer.ProcessResult(Some(bytes))
+          val logBytes = jsonWriter.writeValueAsBytes(response)
+          val sendBytes = secureStringWriter.writeValueAsBytes(response)
+          logs("resp ~~~>", subscriptionName, logBytes, getCorrelationId(delivery))
+          RpcServer.ProcessResult(Some(sendBytes))
         } else {
           RpcServer.ProcessResult(None)
         }
@@ -305,9 +332,50 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
     } else {
       try mapper.treeToValue(node, responseClass) catch {
         case e: Throwable ⇒
-          throw new BadRequestError(s"Can't deserialize $node to $responseClass: ${e.getMessage}", e)
+          // TODO: here you can see the whole message without SecureString
+          val parsed = jsonPath.parse(node)
+//          val objectNode = node.asInstanceOf[ObjectNode]
+          val secureStringFields = getFieldsOfType(responseClass, classOf[SecureString])
+          for (field ← secureStringFields.toArray(new Array[String](secureStringFields.size))) {
+            log.debug(field)
+//            if (objectNode.hasNonNull(field)) {
+//              objectNode.put(field, "<secure>")
+//            }
+            if (parsed.read(field) != null) {
+              parsed.set(field, "<secure>")
+            }
+          }
+          throw new BadRequestError(s"Can't deserialize ${parsed.jsonString()} to $responseClass: ${e.getMessage}", e)
       }
     }
+  }
+
+  private def getFieldsOfType(target: Class[_], searchType: Class[_], pathPrefix: String = "$."): util.LinkedList[String] = {
+    val fields = target.getDeclaredFields
+    val results = new util.LinkedList[String]
+    for (f <- fields) {
+      log.debug(f.getType.getName)
+      if (f.getType.equals(searchType)) {
+        results.add(s"$pathPrefix${f.getName}")
+        // search deep for non java types
+      } else if (!f.getType.isPrimitive && !f.getType.isEnum && !f.getType.getName.contains("java")) {
+        results.addAll(getFieldsOfType(f.getType, searchType, s"$pathPrefix${f.getName}."))
+        // secure map if there are secure strings
+      } else if (f.getType.getName.contains("java.util.Map")) {
+        val parametrized = f.getGenericType.asInstanceOf[ParameterizedType].getActualTypeArguments
+        log.debug(parametrized(0).getTypeName)
+        if (parametrized(0).getTypeName.equals(searchType.getTypeName) || parametrized(1).getTypeName.equals(searchType.getTypeName)) {
+          results.add(s"$pathPrefix${f.getName}")
+        }
+        // secure list if there are secure strings
+      } else if (f.getType.getName.contains("java.util.List")) {
+        val parametrized = f.getGenericType.asInstanceOf[ParameterizedType].getActualTypeArguments
+        if (parametrized(0).getTypeName.equals(searchType.getTypeName)) {
+          results.add(s"$pathPrefix${f.getName}")
+        }
+      }
+    }
+    results
   }
 
   private def getCorrelationId(delivery: Amqp.Delivery): String = {
