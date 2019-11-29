@@ -40,6 +40,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
   implicit val defaultTimeout = Timeout(conf.getDuration("default-timeout").toMillis, TimeUnit.MILLISECONDS)
 
   private val LogTrimLength         = conf.getInt("log-trim-length")
+  private val UnloggedRequests      = conf.getStringList("unlogged-requests").asScala.toSet
   private val DefaultCommandRetries = conf.getInt("default-command-retries")
   private val ChannelParams         = Amqp.ChannelParameters(qos = conf.getInt("prefetch-count"), global = false)
 
@@ -320,7 +321,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
   }
 
   private def logs(prefix: String, routingKey: String, body: Array[Byte], correlationId: String, e: Throwable = null, ip: String = null) {
-    if (e != null || log.underlying.isTraceEnabled) {
+    if (e != null || (log.underlying.isTraceEnabled && !UnloggedRequests.contains(routingKey))) {
       MDC.put("correlation_id", correlationId)
       MDC.put("http_x_forwarded_for", ip)
 
