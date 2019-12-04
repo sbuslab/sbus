@@ -6,7 +6,6 @@ import java.util.concurrent.{CompletionException, ExecutionException, TimeUnit}
 import scala.collection.JavaConverters._
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
-import scala.util.control.NonFatal
 
 import akka.actor.{ActorRef, ActorSystem}
 import akka.pattern.{ask, AskTimeoutException}
@@ -14,8 +13,8 @@ import akka.util.Timeout
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import com.github.sstone.amqp._
+import com.rabbitmq.client.{Address, ConnectionFactory, ListAddressResolver}
 import com.rabbitmq.client.AMQP.BasicProperties
-import com.rabbitmq.client.ConnectionFactory
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.Logger
 import org.slf4j.{LoggerFactory, MDC}
@@ -44,16 +43,20 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
   private val DefaultCommandRetries = conf.getInt("default-command-retries")
   private val ChannelParams         = Amqp.ChannelParameters(qos = conf.getInt("prefetch-count"), global = false)
 
-  private val connection = actorSystem.actorOf(ConnectionOwner.props({
-    log.debug("Sbus connecting to: " + conf.getString("host"))
+  private val connection = actorSystem.actorOf(ConnectionOwner.props(
+    connFactory = {
+      log.debug("Sbus connecting to: " + conf.getString("host"))
 
-    val cf = new ConnectionFactory()
-    cf.setHost(conf.getString("host"))
-    cf.setPort(conf.getInt("port"))
-    cf.setUsername(conf.getString("username"))
-    cf.setPassword(conf.getString("password"))
-    cf
-  }, 3.seconds), name = "rabbitmq-connection")
+      val cf = new ConnectionFactory()
+      cf.setUsername(conf.getString("username"))
+      cf.setPassword(conf.getString("password"))
+      cf
+    },
+    reconnectionDelay = 3.seconds,
+    addressResolver = Some(new ListAddressResolver(
+      conf.getString("host").split(',').map(host ⇒ new Address(host, conf.getInt("port"))).toList.asJava
+    ))
+  ), name = "rabbitmq-connection")
 
   private val channelConfigs: Map[String, SbusChannel] = {
     val producer = ConnectionOwner.createChildActor(connection, ChannelOwner.props())
