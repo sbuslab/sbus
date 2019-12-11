@@ -163,7 +163,8 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
             }
 
           case other ⇒
-            throw new InternalServerError(s"Unexpected response for `$realRoutingKey`: $other")
+            log.error(s"Unexpected response for `$realRoutingKey`: $other")
+            throw new InternalServerError(s"Unexpected response for `$realRoutingKey`")
         }
       }
     } else {
