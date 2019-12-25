@@ -293,6 +293,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
           ),
           routingKeys = channel.routingKeys.getOrElse(List(subscriptionName))
             .flatMap(rtKey ⇒ List(rtKey, channel.queueNameFormat.format(rtKey)))  // add routingKey with channel prefix for handlling retried messages
+            .filter(_.nonEmpty)
             .toSet
         ))
       ),
