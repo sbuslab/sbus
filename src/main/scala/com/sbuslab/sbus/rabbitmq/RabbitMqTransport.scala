@@ -7,13 +7,14 @@ import scala.collection.JavaConverters._
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 
-import akka.actor.{ActorRef, ActorSystem}
+import akka.actor.{ActorRef, ActorSystem, Props}
+import akka.event.LoggingReceive
 import akka.pattern.{ask, AskTimeoutException}
 import akka.util.Timeout
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import com.github.sstone.amqp._
-import com.rabbitmq.client.{Address, ConnectionFactory, ListAddressResolver}
+import com.rabbitmq.client.{RpcClient ⇒ _, RpcServer ⇒ _, _}
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.Logger
@@ -284,26 +285,33 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       }
     }
 
-    val rpcServer = ConnectionOwner.createChildActor(connection, RpcServer.props(
-      processor = processor,
-      init = List(
-        Amqp.AddBinding(Amqp.Binding(
-          exchange = Amqp.ExchangeParameters(channel.exchange, passive = false, exchangeType = channel.exchangeType),
-          queue = Amqp.QueueParameters(
-            name       = channel.queueNameFormat.format(subscriptionName),
-            passive    = false,
-            durable    = channel.durable,
-            exclusive  = channel.exclusive,
-            autodelete = channel.autodelete
-          ),
-          routingKeys = channel.routingKeys.getOrElse(List(subscriptionName))
-            .flatMap(rtKey ⇒ List(rtKey, channel.queueNameFormat.format(rtKey)))  // add routingKey with channel prefix for handlling retried messages
-            .filter(_.nonEmpty)
-            .toSet
-        ))
+    val binding = Amqp.AddBinding(Amqp.Binding(
+      exchange = Amqp.ExchangeParameters(channel.exchange, passive = false, exchangeType = channel.exchangeType),
+      queue = Amqp.QueueParameters(
+        name       = channel.queueNameFormat.format(subscriptionName),
+        passive    = false,
+        durable    = channel.durable,
+        exclusive  = channel.exclusive,
+        autodelete = channel.autodelete
       ),
-      channelParams = Some(ChannelParams)
+      routingKeys = channel.routingKeys.getOrElse(List(subscriptionName))
+        .flatMap(rtKey ⇒ List(rtKey, channel.queueNameFormat.format(rtKey)))  // add routingKey with channel prefix for handlling retried messages
+        .filter(_.nonEmpty)
+        .toSet
     ))
+
+    val rpcServer = ConnectionOwner.createChildActor(connection, Props(new RpcServer(
+      processor = processor,
+      init = List(binding),
+      channelParams = Some(ChannelParams)
+    ) {
+      override def connected(channel: Channel, forwarder: ActorRef) : Receive = LoggingReceive({
+        case Amqp.ConsumerCancelled(consumerTag) ⇒
+          log.warning(s"Sbus consumer for $routingKey cancelled ($consumerTag), trying to shutdown it and connect again...")
+          self forward Amqp.Shutdown(new ShutdownSignalException(true, false, null, null))
+
+      }: Receive) orElse super.connected(channel, forwarder)
+    }))
 
     log.debug(s"Sbus subscribed to: $subscriptionName / $channel")
 
