@@ -50,6 +50,11 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       val cf = new ConnectionFactory()
       cf.setUsername(conf.getString("username"))
       cf.setPassword(conf.getString("password"))
+      cf.setTopologyRecoveryEnabled(true)
+      cf.setAutomaticRecoveryEnabled(true)
+      cf.setNetworkRecoveryInterval(5000)
+      cf.setRequestedHeartbeat(10)
+      cf.setConnectionTimeout(5000)
       cf
     },
     reconnectionDelay = 3.seconds,
