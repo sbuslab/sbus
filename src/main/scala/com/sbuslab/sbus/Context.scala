@@ -29,6 +29,7 @@ case class Context(data: Map[String, Any] = Map.empty) {
       copy(data = data + (key → value))
     }
 
+  def withNewCorrelationId(): Context                   = withCorrelationId(UUID.randomUUID().toString)
   def withCorrelationId(id: String): Context            = withValue(Headers.CorrelationId, id)
   def withTimeout(to: Timeout): Context                 = withTimeout(to.duration.toMillis)
   def withTimeout(value: Long, unit: TimeUnit): Context = withTimeout(Timeout(value, unit))
