@@ -45,6 +45,7 @@ object Context {
   private val passedHeaders = Set(Headers.CorrelationId, Headers.MessageId, Headers.RetryAttemptNr, Headers.Timestamp, Headers.Ip, Headers.UserAgent)
 
   def empty = emptyContext
+  def withNewCorrelationId() = emptyContext.withNewCorrelationId()
   def withCorrelationId(id: String) = Context().withCorrelationId(id)
 
   def withTimeout(to: Timeout): Context = Context().withTimeout(to)
