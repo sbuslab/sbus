@@ -28,6 +28,8 @@ if (this.parent == null) {
     nexusStaging {
         packageGroup = 'com.sbuslab'
         stagingProfileId = '3eeedfb73a4d9e'
+        numberOfRetries = 100
+        delayBetweenRetriesInMillis = 5000
     }
 }
 
