@@ -2,7 +2,7 @@ package com.sbuslab.sbus
 
 import java.util.UUID
 import scala.collection.JavaConverters._
-import scala.concurrent.duration.TimeUnit
+import scala.concurrent.duration.{Duration, TimeUnit}
 
 import akka.util.Timeout
 import com.github.sstone.amqp.Amqp
@@ -31,6 +31,7 @@ case class Context(data: Map[String, Any] = Map.empty) {
 
   def withNewCorrelationId(): Context                   = withCorrelationId(UUID.randomUUID().toString)
   def withCorrelationId(id: String): Context            = withValue(Headers.CorrelationId, id)
+  def withTimeout(to: Duration): Context                = withTimeout(to.toMillis)
   def withTimeout(to: Timeout): Context                 = withTimeout(to.duration.toMillis)
   def withTimeout(value: Long, unit: TimeUnit): Context = withTimeout(Timeout(value, unit))
   def withTimeout(millis: Long): Context                = withValue(Headers.Timeout, millis)
@@ -42,7 +43,7 @@ case class Context(data: Map[String, Any] = Map.empty) {
 object Context {
 
   private val emptyContext = Context()
-  private val passedHeaders = Set(Headers.CorrelationId, Headers.MessageId, Headers.RetryAttemptNr, Headers.Timestamp, Headers.Ip, Headers.UserAgent)
+  private val passedHeaders = Set(Headers.CorrelationId, Headers.MessageId, Headers.RetryAttemptNr, Headers.Timestamp, Headers.ExpiredAt, Headers.Ip, Headers.UserAgent)
 
   def empty = emptyContext
   def withNewCorrelationId() = emptyContext.withNewCorrelationId()
@@ -61,6 +62,10 @@ object Context {
 
     if (delivery.properties.getHeaders != null) {
       data ++= delivery.properties.getHeaders.asScala.filterKeys(passedHeaders)
+    }
+
+    Option(delivery.properties.getHeaders.get(Headers.ExpiredAt)) foreach { expiresAt ⇒
+      data += Headers.Timeout → (expiresAt.toString.toLong - System.currentTimeMillis())
     }
 
     Context(data.result().filter(_._2 != null))
