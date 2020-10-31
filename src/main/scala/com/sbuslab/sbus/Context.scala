@@ -60,12 +60,14 @@ object Context {
     data += Headers.MessageId → Option(delivery.properties.getMessageId).getOrElse(UUID.randomUUID().toString)
     data += Headers.RoutingKey → delivery.envelope.getRoutingKey
 
-    if (delivery.properties.getHeaders != null) {
-      data ++= delivery.properties.getHeaders.asScala.filterKeys(passedHeaders)
-    }
+    val headers = delivery.properties.getHeaders
 
-    Option(delivery.properties.getHeaders.get(Headers.ExpiredAt)) foreach { expiresAt ⇒
-      data += Headers.Timeout → (expiresAt.toString.toLong - System.currentTimeMillis())
+    if (headers != null) {
+      data ++= headers.asScala.filterKeys(passedHeaders)
+
+      Option(headers.get(Headers.ExpiredAt)) foreach { expiresAt ⇒
+        data += Headers.Timeout → (expiresAt.toString.toLong - System.currentTimeMillis())
+      }
     }
 
     Context(data.result().filter(_._2 != null))
