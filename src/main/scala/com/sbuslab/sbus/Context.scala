@@ -66,7 +66,7 @@ object Context {
       data ++= headers.asScala.filterKeys(passedHeaders)
 
       Option(headers.get(Headers.ExpiredAt)) foreach { expiresAt ⇒
-        data += Headers.Timeout → (expiresAt.toString.toLong - System.currentTimeMillis())
+        data += Headers.Timeout → (expiresAt.toString.toLong - System.currentTimeMillis()).max(1)
       }
     }
 

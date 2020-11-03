@@ -128,9 +128,9 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       .deliveryMode(if (responseClass != null) 1 else 2) // 2 → persistent
       .messageId(context.get(Headers.ClientMessageId).getOrElse(UUID.randomUUID()).toString)
       .expiration(context.timeout match {
-        case Some(ms) ⇒ ms.toString
+        case Some(ms)                   ⇒ ms.max(1).toString
         case _ if responseClass != null ⇒ defaultTimeout.duration.toMillis.toString
-        case _ ⇒ null
+        case _                          ⇒ null
       })
       .headers(Map(
         Headers.CorrelationId    → corrId,
