@@ -7,7 +7,7 @@ bump-tag:
 	git push && git push --tags
 
 release-local:
-	gradle publish -Pversion="${VERSION}" --info --refresh-dependencies
+	gradle publish -Pversion="${VERSION}" --info
 
 release:
 	gradle test uploadArchives closeAndReleaseRepository -Pversion="${VERSION}" --info
