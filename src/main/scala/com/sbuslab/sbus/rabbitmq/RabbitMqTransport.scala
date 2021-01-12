@@ -181,7 +181,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
     }) recover {
       case e: AskTimeoutException ⇒
         logs("timeout error", realRoutingKey, bytes, corrId, e)
-        throw new ErrorMessage(504, s"Timeout on `$realRoutingKey` with message ${msg.getClass.getSimpleName}", e)
+        throw new ErrorMessage(504, s"Timeout on `$realRoutingKey` with message ${if (msg != null) msg.getClass.getSimpleName else null}", e)
 
       case e: Throwable ⇒
         logs("error", realRoutingKey, bytes, corrId, e)
