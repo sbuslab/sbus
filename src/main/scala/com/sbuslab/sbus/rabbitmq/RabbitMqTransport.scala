@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import com.github.sstone.amqp._
 import com.rabbitmq.client.{RpcClient ⇒ _, RpcServer ⇒ _, _}
 import com.rabbitmq.client.AMQP.BasicProperties
+import com.rabbitmq.client.impl.recovery.{BackoffPolicy, DefaultRetryHandler, TopologyRecoveryRetryHandlerBuilder, TopologyRecoveryRetryLogic}
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.Logger
 import org.slf4j.{LoggerFactory, MDC}
@@ -52,6 +53,16 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       cf.setUsername(conf.getString("username"))
       cf.setPassword(conf.getString("password"))
       cf.setTopologyRecoveryEnabled(true)
+
+        cf.setTopologyRecoveryRetryHandler(TopologyRecoveryRetryHandlerBuilder.builder()
+        .bindingRecoveryRetryCondition((_, _) ⇒ true)
+        .consumerRecoveryRetryCondition((_, _) ⇒ true)
+        .exchangeRecoveryRetryCondition((_, _) ⇒ true)
+        .queueRecoveryRetryCondition((_, _) ⇒ true)
+        .retryAttempts(Int.MaxValue)
+        .backoffPolicy(_ ⇒ Thread.sleep(3000))
+        .build())
+
       cf.setAutomaticRecoveryEnabled(true)
       cf.setNetworkRecoveryInterval(5000)
       cf.setRequestedHeartbeat(10)
