@@ -54,7 +54,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       cf.setPassword(conf.getString("password"))
       cf.setTopologyRecoveryEnabled(true)
 
-        cf.setTopologyRecoveryRetryHandler(TopologyRecoveryRetryHandlerBuilder.builder()
+      cf.setTopologyRecoveryRetryHandler(TopologyRecoveryRetryHandlerBuilder.builder()
         .bindingRecoveryRetryCondition((_, _) ⇒ true)
         .consumerRecoveryRetryCondition((_, _) ⇒ true)
         .exchangeRecoveryRetryCondition((_, _) ⇒ true)
