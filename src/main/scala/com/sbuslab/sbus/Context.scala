@@ -37,13 +37,15 @@ case class Context(data: Map[String, Any] = Map.empty) {
   def withTimeout(millis: Long): Context                = withValue(Headers.Timeout, millis)
   def withRetries(max: Int): Context                    = withValue(Headers.RetryAttemptsMax, max)
   def withRoutingKey(key: String): Context              = withValue(Headers.RoutingKey, key)
+
+  def customData = data -- Context.passedHeaders
 }
 
 
 object Context {
 
   private val emptyContext = Context()
-  private val passedHeaders = Set(Headers.CorrelationId, Headers.MessageId, Headers.RetryAttemptNr, Headers.Timestamp, Headers.ExpiredAt, Headers.Ip, Headers.UserAgent)
+  private val passedHeaders = Set(Headers.Timeout, Headers.RoutingKey, Headers.CorrelationId, Headers.MessageId, Headers.RetryAttemptNr, Headers.Timestamp, Headers.ExpiredAt, Headers.Ip, Headers.UserAgent)
 
   def empty = emptyContext
   def withNewCorrelationId() = emptyContext.withNewCorrelationId()
