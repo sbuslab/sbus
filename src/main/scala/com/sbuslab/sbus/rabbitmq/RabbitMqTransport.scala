@@ -16,7 +16,7 @@ import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import com.github.sstone.amqp._
 import com.rabbitmq.client.{RpcClient ⇒ _, RpcServer ⇒ _, _}
 import com.rabbitmq.client.AMQP.BasicProperties
-import com.rabbitmq.client.impl.recovery.{BackoffPolicy, DefaultRetryHandler, TopologyRecoveryRetryHandlerBuilder, TopologyRecoveryRetryLogic}
+import com.rabbitmq.client.impl.recovery.TopologyRecoveryRetryHandlerBuilder
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.Logger
 import org.slf4j.{LoggerFactory, MDC}
@@ -149,11 +149,11 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
         Headers.RetryAttemptsMax → context.maxRetries.getOrElse(if (responseClass != null) null else DefaultCommandRetries), // commands retriable by default
         Headers.ExpiredAt        → context.timeout.map(_ + System.currentTimeMillis()).getOrElse(null),
         Headers.Timestamp        → System.currentTimeMillis(),
-        Headers.Ip               → context.data.get("ip").orNull,
-        Headers.UserAgent        → context.data.get("userAgent").orNull
+        Headers.Ip               → context.ip,
+        Headers.UserAgent        → context.userAgent
       ).filter(_._2 != null).mapValues(_.toString.asInstanceOf[Object]).asJava)
 
-    logs("~~~>", realRoutingKey, bytes, corrId, ip = context.data.get("ip").map(_.toString).orNull)
+    logs("~~~>", realRoutingKey, bytes, corrId)
 
     val pub = Amqp.Publish(channel.exchange, realRoutingKey, bytes, Some(propsBldr.build()), mandatory = channel.mandatory)
 
@@ -349,10 +349,9 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
     } else null
   }
 
-  private def logs(prefix: String, routingKey: String, body: Array[Byte], correlationId: String, e: Throwable = null, ip: String = null) {
+  private def logs(prefix: String, routingKey: String, body: Array[Byte], correlationId: String, e: Throwable = null) {
     if (e != null || (log.underlying.isTraceEnabled && !UnloggedRequests.contains(routingKey))) {
       MDC.put("correlation_id", correlationId)
-      MDC.put("http_x_forwarded_for", ip)
 
       val msg = s"sbus $prefix $routingKey: ${new String(body.take(LogTrimLength))}"
 
@@ -364,7 +363,6 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       }
 
       MDC.remove("correlation_id")
-      MDC.remove("http_x_forwarded_for")
     }
   }
 }
