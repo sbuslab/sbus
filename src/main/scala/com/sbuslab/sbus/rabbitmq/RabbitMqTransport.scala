@@ -319,7 +319,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       override def connected(channel: Channel, forwarder: ActorRef) : Receive = LoggingReceive({
         case Amqp.ConsumerCancelled(consumerTag) ⇒
           log.warning(s"Sbus consumer for $routingKey cancelled ($consumerTag), trying to shutdown it and connect again...")
-          self forward Amqp.Shutdown(new ShutdownSignalException(true, false, null, null))
+          self forward Amqp.Shutdown(new ShutdownSignalException(false, false, null, null))
 
       }: Receive) orElse super.connected(channel, forwarder)
     }))
