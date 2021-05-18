@@ -7,7 +7,7 @@ import scala.collection.JavaConverters._
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 
-import akka.actor.{ActorRef, ActorSystem, Props}
+import akka.actor.{ActorRef, ActorSystem, PoisonPill, Props}
 import akka.event.LoggingReceive
 import akka.pattern.{ask, AskTimeoutException}
 import akka.util.Timeout
@@ -311,22 +311,30 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
         .toSet
     ))
 
-    val rpcServer = ConnectionOwner.createChildActor(connection, Props(new RpcServer(
-      processor = processor,
-      init = List(binding),
-      channelParams = Some(ChannelParams)
-    ) {
-      override def connected(channel: Channel, forwarder: ActorRef) : Receive = LoggingReceive({
-        case Amqp.ConsumerCancelled(consumerTag) ⇒
-          log.warning(s"Sbus consumer for $routingKey cancelled ($consumerTag), trying to shutdown it and connect again...")
-          self forward Amqp.Shutdown(new ShutdownSignalException(false, false, null, null))
+    def createRpcActor(): Unit = {
+      val rpcServer = ConnectionOwner.createChildActor(connection, Props(new RpcServer(
+        processor = processor,
+        init = List(binding),
+        channelParams = Some(ChannelParams)
+      ) {
+        override def connected(channel: Channel, forwarder: ActorRef) : Receive = LoggingReceive(r = {
+          case Amqp.ConsumerCancelled(consumerTag) ⇒
+            log.warning(s"Sbus consumer for $routingKey cancelled ($consumerTag), trying to shutdown it and connect again...")
+            self forward Amqp.Shutdown(new ShutdownSignalException(true, false, null, null))
 
-      }: Receive) orElse super.connected(channel, forwarder)
-    }))
+            actorSystem.stop(self)
 
-    log.debug(s"Sbus subscribed to: $subscriptionName / $channel")
+            createRpcActor() // recreate
 
-    Amqp.waitForConnection(actorSystem, rpcServer).await()
+        }: Receive) orElse super.connected(channel, forwarder)
+      }))
+
+      log.debug(s"Sbus subscribed to: $subscriptionName / $channel")
+
+      Amqp.waitForConnection(actorSystem, rpcServer).await()
+    }
+
+    createRpcActor()
   }
 
   private def deserializeToClass(node: JsonNode, responseClass: Class[_]): Any = {
