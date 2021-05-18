@@ -2,7 +2,7 @@ package com.sbuslab.sbus
 
 import scala.concurrent.{ExecutionContext, Future}
 
-import io.prometheus.client.Histogram
+import io.prometheus.client.{Gauge, Histogram}
 
 
 object Transport {
@@ -10,6 +10,12 @@ object Transport {
     .name("sbus_processing_seconds")
     .help("Sbus processing metrics")
     .labelNames("type", "routingKey")
+    .register()
+
+  val eventsHeartbeat = Gauge.build()
+    .name("sbus_events_heartbeat")
+    .help("Sbus events heartbeat")
+    .labelNames("routingKey")
     .register()
 }
 

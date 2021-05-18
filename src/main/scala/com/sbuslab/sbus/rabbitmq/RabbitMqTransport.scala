@@ -7,7 +7,7 @@ import scala.collection.JavaConverters._
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 
-import akka.actor.{ActorRef, ActorSystem, PoisonPill, Props}
+import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.event.LoggingReceive
 import akka.pattern.{ask, AskTimeoutException}
 import akka.util.Timeout
@@ -106,6 +106,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
         exclusive       = cfg.getBoolean("exclusive"),
         autodelete      = cfg.getBoolean("autodelete"),
         mandatory       = cfg.getBoolean("mandatory"),
+        heartbeat       = cfg.getBoolean("heartbeat"),
         routingKeys     = Option(cfg.getStringList("routing-keys").asScala.toList).filter(_.nonEmpty)
       )
     }
@@ -213,8 +214,16 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
     val processor = new RpcServer.IProcessor {
       def process(delivery: Amqp.Delivery): Future[RpcServer.ProcessResult] =
         meter("handle", subscriptionName) {
+          val correlationId = getCorrelationId(delivery)
+
           (try {
-            logs("<~~~", subscriptionName, delivery.body, getCorrelationId(delivery))
+            if (correlationId == "sbus:ping") {
+              val pingAt = mapper.readTree(delivery.body).path("body").path("ping").asLong(0)
+              Transport.eventsHeartbeat.labels(routingKey).set(System.currentTimeMillis - pingAt)
+              return Future.successful(RpcServer.ProcessResult(None))
+            }
+
+            logs("<~~~", subscriptionName, delivery.body, correlationId)
 
             val payload = (Option(mapper.readTree(delivery.body)).map(_.get("body")).orNull match {
               case null ⇒ null
@@ -227,7 +236,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
           }) map {
             case result if delivery.properties.getReplyTo != null ⇒
               val bytes = jsonWriter.writeValueAsBytes(new Response(200, result))
-              logs("resp ~~~>", subscriptionName, bytes, getCorrelationId(delivery))
+              logs("resp ~~~>", subscriptionName, bytes, correlationId)
               RpcServer.ProcessResult(Some(bytes))
 
             case _ ⇒ RpcServer.ProcessResult(None)
@@ -258,10 +267,10 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
 
                 // if message will be expired before next attempt — skip it
                 if (Option(heads.get(Headers.ExpiredAt)).exists(_.toString.toLong <= System.currentTimeMillis() + backoff)) {
-                  logs("timeout", originRoutingKey, s"Message will be expired at ${heads.get(Headers.ExpiredAt)}, don't retry it!".getBytes, getCorrelationId(delivery), e)
+                  logs("timeout", originRoutingKey, s"Message will be expired at ${heads.get(Headers.ExpiredAt)}, don't retry it!".getBytes, correlationId, e)
                   Future.failed(e)
                 } else {
-                  logs("error", originRoutingKey, s"$e. Retry attempt ${attemptNr} after ${updProps.getExpiration} millis...".getBytes, getCorrelationId(delivery), e)
+                  logs("error", originRoutingKey, s"$e. Retry attempt ${attemptNr} after ${updProps.getExpiration} millis...".getBytes, correlationId, e)
 
                   channel.producer ? Amqp.Publish(channel.retryExchange, channel.queueNameFormat.format(originRoutingKey), delivery.body, Some(updProps), mandatory = false) map {
                     case _: Amqp.Ok ⇒ RpcServer.ProcessResult(None)
@@ -335,6 +344,12 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
     }
 
     createRpcActor()
+
+    if (channel.heartbeat) {
+      actorSystem.scheduler.schedule(1.minute, 1.minute) {
+        try send(routingKey, SbusPing(System.currentTimeMillis), context = Context.withCorrelationId("sbus:ping"), null) catch { case _: Throwable ⇒ }
+      }
+    }
   }
 
   private def deserializeToClass(node: JsonNode, responseClass: Class[_]): Any = {
@@ -397,5 +412,10 @@ case class SbusChannel(
   exclusive: Boolean,
   autodelete: Boolean,
   mandatory: Boolean,
+  heartbeat: Boolean,
   routingKeys: Option[List[String]]
+)
+
+case class SbusPing(
+  ping: Long,
 )
