@@ -60,7 +60,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
         .exchangeRecoveryRetryCondition((_, _) ⇒ true)
         .queueRecoveryRetryCondition((_, _) ⇒ true)
         .retryAttempts(Int.MaxValue)
-        .backoffPolicy(_ ⇒ Thread.sleep(3000))
+        .backoffPolicy(_ ⇒ Thread.sleep(100))
         .build())
 
       cf.setAutomaticRecoveryEnabled(true)
