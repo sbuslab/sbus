@@ -154,7 +154,9 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
         Headers.UserAgent        → context.userAgent
       ).filter(_._2 != null).mapValues(_.toString.asInstanceOf[Object]).asJava)
 
-    logs("~~~>", realRoutingKey, bytes, corrId)
+    if (corrId != "sbus:ping") {
+      logs("~~~>", realRoutingKey, bytes, corrId)
+    }
 
     val pub = Amqp.Publish(channel.exchange, realRoutingKey, bytes, Some(propsBldr.build()), mandatory = channel.mandatory)
 
