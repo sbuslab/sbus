@@ -2,7 +2,7 @@ package com.sbuslab.sbus.rabbitmq
 
 import java.util
 import java.util.UUID
-import java.util.concurrent.{CompletionException, ExecutionException, TimeUnit}
+import java.util.concurrent.{CompletionException, ConcurrentLinkedQueue, ExecutionException, TimeUnit}
 import scala.collection.JavaConverters._
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
@@ -44,6 +44,8 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
   private val UnloggedRequests      = conf.getStringList("unlogged-requests").asScala.toSet
   private val DefaultCommandRetries = conf.getInt("default-command-retries")
   private val ChannelParams         = Amqp.ChannelParameters(qos = conf.getInt("prefetch-count"), global = false)
+
+  private val rpcServers = new ConcurrentLinkedQueue[ActorRef]
 
   private val connection = actorSystem.actorOf(ConnectionOwner.props(
     connFactory = {
@@ -125,6 +127,17 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       channelConfigs("default")
     }
 
+  scala.sys.addShutdownHook {
+    log.info("Stopping Sbus...")
+
+    rpcServers forEach { _ ! Amqp.Shutdown(new ShutdownSignalException(true, false, null, null)) }
+
+    Thread.sleep(conf.getDuration("shutdown-timeout").toMillis)
+
+    actorSystem.terminate()
+
+    log.info("Sbus terminated...")
+  }
 
   /**
    *
@@ -341,6 +354,8 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       }))
 
       log.debug(s"Sbus subscribed to: $subscriptionName / $channel")
+
+      rpcServers.add(rpcServer)
 
       Amqp.waitForConnection(actorSystem, rpcServer).await()
     }
