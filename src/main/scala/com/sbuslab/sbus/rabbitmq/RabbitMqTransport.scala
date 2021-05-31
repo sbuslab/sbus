@@ -160,7 +160,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       .headers(Map(
         Headers.CorrelationId    → corrId,
         Headers.RoutingKey       → realRoutingKey,
-        Headers.RetryAttemptsMax → context.maxRetries.getOrElse(if (responseClass != null) null else DefaultCommandRetries), // commands retriable by default
+        Headers.RetryAttemptsMax → context.maxRetries.getOrElse(if (responseClass != null) null else DefaultCommandRetries), // commands retryable by default
         Headers.ExpiredAt        → context.timeout.map(_ + System.currentTimeMillis()).getOrElse(null),
         Headers.Timestamp        → System.currentTimeMillis(),
         Headers.Ip               → context.ip,
@@ -341,7 +341,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
         init = List(binding),
         channelParams = Some(ChannelParams)
       ) {
-        override def connected(channel: Channel, forwarder: ActorRef) : Receive = LoggingReceive(r = {
+        override def connected(channel: Channel, forwarder: ActorRef): Receive = LoggingReceive({
           case Amqp.ConsumerCancelled(consumerTag) ⇒
             log.warning(s"Sbus consumer for $routingKey cancelled ($consumerTag), trying to shutdown it and connect again...")
             self forward Amqp.Shutdown(new ShutdownSignalException(true, false, null, null))
@@ -350,7 +350,25 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
 
             createRpcActor() // recreate
 
+          case Amqp.Shutdown(cause) if !cause.isInitiatedByApplication ⇒
+            context.stop(forwarder)
+
+            if (!cause.isHardError) {
+              context.parent ! ConnectionOwner.CreateChannel
+            }
+
+            statusListeners.foreach(_ ! ChannelOwner.Disconnected)
+            context.become(disconnected)
+
         }: Receive) orElse super.connected(channel, forwarder)
+
+        override def unhandled(message: Any): Unit = message match {
+          case Amqp.Shutdown(cause) ⇒
+            log.debug(s"Amqp.Shutdown $cause")
+
+          case _ ⇒
+            super.unhandled(message)
+        }
       }))
 
       log.debug(s"Sbus subscribed to: $subscriptionName / $channel")
