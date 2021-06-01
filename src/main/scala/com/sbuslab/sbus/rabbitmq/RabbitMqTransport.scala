@@ -95,7 +95,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
             Amqp.QueueParameters(retryExchange.name, passive = false, durable = true, exclusive = false, autodelete = false, args = Map("x-dead-letter-exchange" → exchange.name)))
 
         _ ← producer ? Amqp.QueueBind(retryExchange.name, retryExchange.name, Set("#"))
-      } yield {}, 10.seconds)
+      } yield {}, 120.seconds)
 
       name → SbusChannel(
         name            = name,
