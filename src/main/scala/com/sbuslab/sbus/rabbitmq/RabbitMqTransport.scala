@@ -264,7 +264,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
             case e: IllegalStateException ⇒
               throw new ConflictError(e.toString, e)
 
-            case e: Throwable if !e.isInstanceOf[UnrecoverableFailure] ⇒
+            case e: Throwable if !UnrecoverableFailures.contains(e) ⇒
               val heads            = Option(delivery.properties.getHeaders).getOrElse(new util.HashMap[String, Object]())
               val attemptsMax      = Option(heads.get(Headers.RetryAttemptsMax)).map(_.toString.toInt)
               val attemptNr        = Option(heads.get(Headers.RetryAttemptNr)).fold(1)(_.toString.toInt)
