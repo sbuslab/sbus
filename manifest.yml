@@ -1,0 +1,9 @@
+info:
+  name: sbuslab-sbus
+  version: "1.4"
+
+include:
+  - file: /etc/serve/include.d/library.yml
+
+build:
+  - gradle: publish
