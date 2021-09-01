@@ -8,7 +8,7 @@ import akka.util.Timeout
 import com.github.sstone.amqp.Amqp
 
 
-case class Context(data: Map[String, Any] = Map.empty) {
+case class Context(data: Map[String, Any] = Map.empty, map: Array[Byte] ⇒ Context = null) {
 
   def get(key: String): Option[Any] = data.get(key)
 
@@ -38,14 +38,27 @@ case class Context(data: Map[String, Any] = Map.empty) {
   def withRetries(max: Int): Context                    = withValue(Headers.RetryAttemptsMax, max)
   def withRoutingKey(key: String): Context              = withValue(Headers.RoutingKey, key)
 
-  def customData = data -- Context.passedHeaders
+  def customData = data -- Context.allowedHeaders
 }
 
 
 object Context {
 
   private val emptyContext = Context()
-  private val passedHeaders = Set(Headers.Timeout, Headers.RoutingKey, Headers.CorrelationId, Headers.MessageId, Headers.RetryAttemptNr, Headers.Timestamp, Headers.ExpiredAt, Headers.Ip, Headers.UserAgent)
+
+  private val allowedHeaders = Set(
+    Headers.Timeout,
+    Headers.RoutingKey,
+    Headers.CorrelationId,
+    Headers.MessageId,
+    Headers.RetryAttemptNr,
+    Headers.Timestamp,
+    Headers.ExpiredAt,
+    Headers.Ip,
+    Headers.UserAgent,
+    Headers.Origin,
+    Headers.Signature,
+  )
 
   def empty = emptyContext
   def withNewCorrelationId() = emptyContext.withNewCorrelationId()
@@ -65,7 +78,7 @@ object Context {
     val headers = delivery.properties.getHeaders
 
     if (headers != null) {
-      data ++= headers.asScala.filterKeys(passedHeaders)
+      data ++= headers.asScala.filterKeys(allowedHeaders)
 
       Option(headers.get(Headers.ExpiredAt)) foreach { expiresAt ⇒
         data += Headers.Timeout → (expiresAt.toString.toLong - System.currentTimeMillis()).max(1)

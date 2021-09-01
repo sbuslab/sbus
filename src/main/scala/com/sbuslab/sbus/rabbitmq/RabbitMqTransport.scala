@@ -22,10 +22,10 @@ import com.typesafe.scalalogging.Logger
 import org.slf4j.{LoggerFactory, MDC}
 
 import com.sbuslab.model._
-import com.sbuslab.sbus.{Context, Headers, Transport}
+import com.sbuslab.sbus.{AuthProvider, Context, Headers, Transport}
 
 
-class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMapper) extends Transport {
+class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: ActorSystem, mapper: ObjectMapper) extends Transport {
 
   implicit val ec = actorSystem.dispatcher
 
@@ -148,11 +148,14 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
 
     val bytes  = jsonWriter.writeValueAsBytes(new Message(realRoutingKey, msg))
     val corrId = Option(context.correlationId).getOrElse(UUID.randomUUID().toString)
+    val time   = System.currentTimeMillis()
+
+    val ctx = authProvider.sign(context.withValue(Headers.Timestamp, time), bytes)
 
     val propsBldr = new BasicProperties().builder()
       .deliveryMode(if (responseClass != null) 1 else 2) // 2 → persistent
-      .messageId(context.get(Headers.ClientMessageId).getOrElse(UUID.randomUUID()).toString)
-      .expiration(context.timeout match {
+      .messageId(ctx.get(Headers.ClientMessageId).getOrElse(UUID.randomUUID()).toString)
+      .expiration(ctx.timeout match {
         case Some(ms)                   ⇒ ms.max(1).toString
         case _ if responseClass != null ⇒ defaultTimeout.duration.toMillis.toString
         case _                          ⇒ null
@@ -160,11 +163,13 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
       .headers(Map(
         Headers.CorrelationId    → corrId,
         Headers.RoutingKey       → realRoutingKey,
-        Headers.RetryAttemptsMax → context.maxRetries.getOrElse(if (responseClass != null) null else DefaultCommandRetries), // commands retryable by default
-        Headers.ExpiredAt        → context.timeout.map(_ + System.currentTimeMillis()).getOrElse(null),
-        Headers.Timestamp        → System.currentTimeMillis(),
-        Headers.Ip               → context.ip,
-        Headers.UserAgent        → context.userAgent
+        Headers.RetryAttemptsMax → ctx.maxRetries.getOrElse(if (responseClass != null) null else DefaultCommandRetries), // commands retryable by default
+        Headers.ExpiredAt        → ctx.timeout.map(_ + time).getOrElse(null),
+        Headers.Timestamp        → time,
+        Headers.Ip               → ctx.ip,
+        Headers.UserAgent        → ctx.userAgent,
+        Headers.Origin           → ctx.get(Headers.Origin).orNull,
+        Headers.Signature        → ctx.get(Headers.Signature).orNull,
       ).filter(_._2 != null).mapValues(_.toString.asInstanceOf[Object]).asJava)
 
     if (corrId != "sbus:ping") {
@@ -175,7 +180,7 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
 
     (if (responseClass != null) {
       meter("request", realRoutingKey) {
-        rpcClient.ask(RpcClient.Request(pub))(context.timeout.fold(defaultTimeout)(_.millis)) map {
+        rpcClient.ask(RpcClient.Request(pub))(ctx.timeout.fold(defaultTimeout)(_.millis)) map {
           case RpcClient.Response(deliveries) ⇒
             logs("resp <~~~", realRoutingKey, deliveries.head.body, corrId)
 
@@ -245,7 +250,11 @@ class RabbitMqTransport(conf: Config, actorSystem: ActorSystem, mapper: ObjectMa
               case body ⇒ deserializeToClass(body, messageClass)
             }).asInstanceOf[T]
 
-            handler(payload, Context.from(delivery))
+            val context = Context.from(delivery)
+
+            authProvider.verify(context, delivery.body)
+
+            handler(payload, context)
           } catch {
             case e: Throwable ⇒ Future.failed(e)
           }) map {
