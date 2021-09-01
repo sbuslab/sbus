@@ -10,8 +10,6 @@ import net.i2p.crypto.eddsa.{EdDSAEngine, EdDSAPrivateKey, EdDSAPublicKey, Utils
 import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveTable, EdDSAPrivateKeySpec, EdDSAPublicKeySpec}
 import org.slf4j.LoggerFactory
 
-import com.sbuslab.model.ForbiddenError
-
 
 trait AuthProvider {
   def sign(context: Context, body: Array[Byte]): Context
@@ -54,7 +52,7 @@ class AuthProviderImpl(conf: Config) extends AuthProvider {
     (for {
       caller ← context.get(Headers.Origin).map(_.toString)
       signature ← context.get(Headers.Signature)
-      pubKey ← publicKeys.get(caller.toString)
+      pubKey ← publicKeys.get(caller)
     } yield {
       val vrf = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
       vrf.initVerify(pubKey)

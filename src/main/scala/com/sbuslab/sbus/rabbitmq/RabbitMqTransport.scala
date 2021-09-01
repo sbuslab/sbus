@@ -232,17 +232,17 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
     val subscriptionName = routingKey.split(':').last
 
     val processor = new RpcServer.IProcessor {
-      def process(delivery: Amqp.Delivery): Future[RpcServer.ProcessResult] =
+      def process(delivery: Amqp.Delivery): Future[RpcServer.ProcessResult] = {
+        val correlationId = getCorrelationId(delivery)
+
+        if (correlationId == "sbus:ping") {
+          val pingAt = mapper.readTree(delivery.body).path("body").path("ping").asLong(0)
+          Transport.eventsHeartbeat.labels(routingKey).set(System.currentTimeMillis - pingAt)
+          return Future.successful(RpcServer.ProcessResult(None))
+        }
+
         meter("handle", subscriptionName) {
-          val correlationId = getCorrelationId(delivery)
-
           (try {
-            if (correlationId == "sbus:ping") {
-              val pingAt = mapper.readTree(delivery.body).path("body").path("ping").asLong(0)
-              Transport.eventsHeartbeat.labels(routingKey).set(System.currentTimeMillis - pingAt)
-              return Future.successful(RpcServer.ProcessResult(None))
-            }
-
             logs("<~~~", subscriptionName, delivery.body, correlationId)
 
             val payload = (Option(mapper.readTree(delivery.body)).map(_.get("body")).orNull match {
@@ -310,6 +310,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
             case e: Throwable ⇒ onFailure(delivery, e)
           }
         }
+      }
 
       def onFailure(delivery: Amqp.Delivery, e: Throwable): RpcServer.ProcessResult = {
         logs("error", subscriptionName, e.toString.getBytes, getCorrelationId(delivery), e)
