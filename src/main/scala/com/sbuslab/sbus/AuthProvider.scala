@@ -25,8 +25,7 @@ class AuthProviderImpl(conf: Config) extends AuthProvider {
 
   private val spec = EdDSANamedCurveTable.getByName("Ed25519")
 
-  private val signer  = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
-  signer.initSign(new EdDSAPrivateKey(new EdDSAPrivateKeySpec(Utils.hexToBytes(conf.getString("private-key")), spec)))
+  private val privKey = new EdDSAPrivateKey(new EdDSAPrivateKeySpec(Utils.hexToBytes(conf.getString("private-key")), spec))
 
   private val publicKeys = conf.getConfig("public-keys").atPath("/").getObject("/").asScala.toMap map { case (owner, obj) ⇒
     owner → new EdDSAPublicKey(new EdDSAPublicKeySpec(Utils.hexToBytes(obj.atPath("/").getString("/")), spec))
@@ -40,7 +39,11 @@ class AuthProviderImpl(conf: Config) extends AuthProvider {
     obj.atPath("/").getStringList("/").asScala.toList.map((_, group))
   }).groupBy(_._1).mapValues(_.map(_._2).toSet)
 
+
   def sign(context: Context, body: Array[Byte]): Context = {
+    val signer = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
+    signer.initSign(privKey)
+
     signer.update(body)
 
     context
