@@ -63,17 +63,19 @@ class AuthProviderImpl(conf: Config) extends AuthProvider {
 
       val routingKey = context.routingKey
 
-      require(vrf.verify(Base64.getUrlDecoder.decode(signature.toString)), throw new ForbiddenError(s"Incorrect internal request signature: $routingKey"))
+      if (vrf.verify(Base64.getUrlDecoder.decode(signature.toString))) {
+        val callerGroups = groups.getOrElse(caller, Set.empty)
 
-      val callerGroups = groups.getOrElse(caller, Set.empty)
+        if (caller == originName
+          || access.get("*").exists(rt ⇒ rt.contains("*") || rt.contains(caller) || rt.intersect(callerGroups).nonEmpty)
+          || access.get(routingKey).exists(rt ⇒ rt.contains("*") || rt.contains(caller) || rt.intersect(callerGroups).nonEmpty)) {
 
-      if (caller == originName
-        || access.get("*").exists(rt ⇒ rt.contains("*") || rt.contains(caller) || rt.intersect(callerGroups).nonEmpty)
-        || access.get(routingKey).exists(rt ⇒ rt.contains("*") || rt.contains(caller) || rt.intersect(callerGroups).nonEmpty)) {
-
-        log.trace(s"Sbus: $caller get access to $routingKey")
+          log.trace(s"Sbus: $caller get access to $routingKey")
+        } else {
+          log.warn(s"Sbus: $caller has no access to $routingKey method!")
+        }
       } else {
-        log.warn(s"Sbus: $caller has no access to $routingKey method!")
+        log.warn(s"Incorrect internal request signature: $caller → $routingKey ($signature)")
       }
 
     }) getOrElse {
