@@ -8,7 +8,7 @@ import akka.util.Timeout
 import com.github.sstone.amqp.Amqp
 
 
-case class Context(data: Map[String, Any] = Map.empty, map: Array[Byte] ⇒ Context = null) {
+case class Context(data: Map[String, Any] = Map.empty) {
 
   def get(key: String): Option[Any] = data.get(key)
 
