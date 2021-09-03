@@ -78,7 +78,6 @@ class AuthProviderImpl(conf: Config) extends AuthProvider {
       } else {
         log.warn(s"Incorrect internal request signature: $caller → $routingKey ($signature)")
       }
-
     }) getOrElse {
       log.debug(s"Unauthenticated sbus request: ${context.routingKey}, caller: ${context.get(Headers.Origin)}")
     }
