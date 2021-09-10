@@ -2,14 +2,14 @@ package com.sbuslab.sbus.rabbitmq
 
 import java.util
 import java.util.UUID
-import java.util.concurrent.{CompletionException, ConcurrentLinkedQueue, ExecutionException, TimeUnit}
+import java.util.concurrent._
 import scala.collection.JavaConverters._
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.event.LoggingReceive
-import akka.pattern.{ask, AskTimeoutException}
+import akka.pattern.{ask, AskTimeoutException, CircuitBreaker, CircuitBreakerOpenException}
 import akka.util.Timeout
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
@@ -120,6 +120,20 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
     child
   }
 
+  private val breakers = new ConcurrentHashMap[String, CircuitBreaker]()
+  private val circuitBreakerEnabled = conf.getBoolean("circuit-breaker.enabled")
+
+  private def circuitBreaker[T](routingKey: String)(f: Future[T]): Future[T] =
+    if (circuitBreakerEnabled) {
+      breakers.computeIfAbsent(routingKey, _ ⇒ {
+        new CircuitBreaker(
+          scheduler    = actorSystem.scheduler,
+          maxFailures  = conf.getInt("circuit-breaker.max-failures"),
+          callTimeout  = Duration.Zero,
+          resetTimeout = conf.getDuration("circuit-breaker.reset-timeout").toMillis.millis)
+      }).withCircuitBreaker(f)
+    } else f
+
   private def getChannel(routingKey: String): SbusChannel =
     if (routingKey.contains(":")) {
       channelConfigs.getOrElse(routingKey.split(':').head, throw new InternalServerError(s"There is no channel configuration for Sbus routingKey = $routingKey!"))
@@ -180,29 +194,31 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
 
     (if (responseClass != null) {
       meter("request", realRoutingKey) {
-        rpcClient.ask(RpcClient.Request(pub))(ctx.timeout.fold(defaultTimeout)(_.millis)) map {
-          case RpcClient.Response(deliveries) ⇒
-            logs("resp <~~~", realRoutingKey, deliveries.head.body, corrId)
+        circuitBreaker(realRoutingKey) {
+          rpcClient.ask(RpcClient.Request(pub))(ctx.timeout.fold(defaultTimeout)(_.millis)) map {
+            case RpcClient.Response(deliveries) ⇒
+              logs("resp <~~~", realRoutingKey, deliveries.head.body, corrId)
 
-            val tree = mapper.readTree(deliveries.head.body)
+              val tree = mapper.readTree(deliveries.head.body)
 
-            val status =
-              if (tree.hasNonNull("status")) {
-                tree.path("status").asInt
-              } else if (tree.path("failed").asBoolean(false)) { // backward compatibility with old protocol
-                500
-              } else { 200 }
+              val status =
+                if (tree.hasNonNull("status")) {
+                  tree.path("status").asInt
+                } else if (tree.path("failed").asBoolean(false)) { // backward compatibility with old protocol
+                  500
+                } else { 200 }
 
-            if (status < 400) {
-              deserializeToClass(tree.path("body"), responseClass)
-            } else {
-              val err = mapper.treeToValue(tree.path("body"), classOf[ErrorResponseBody])
-              throw ErrorMessage.fromCode(status, err.getMessage, null, err.getError, err.getLinks, err.getEmbedded)
-            }
+              if (status < 400) {
+                deserializeToClass(tree.path("body"), responseClass)
+              } else {
+                val err = mapper.treeToValue(tree.path("body"), classOf[ErrorResponseBody])
+                throw ErrorMessage.fromCode(status, err.getMessage, null, err.getError, err.getLinks, err.getEmbedded)
+              }
 
-          case other ⇒
-            log.error(s"Unexpected response for `$realRoutingKey`: $other")
-            throw new InternalServerError(s"Unexpected response for `$realRoutingKey`")
+            case other ⇒
+              log.error(s"Unexpected response for `$realRoutingKey`: $other")
+              throw new InternalServerError(s"Unexpected response for `$realRoutingKey`")
+          }
         }
       }
     } else {
@@ -214,6 +230,10 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       case e: AskTimeoutException ⇒
         logs("timeout error", realRoutingKey, bytes, corrId, e)
         throw new ErrorMessage(504, s"Timeout on `$realRoutingKey` with message ${if (msg != null) msg.getClass.getSimpleName else null}", e)
+
+      case e: CircuitBreakerOpenException ⇒
+        logs("circuit breaker", realRoutingKey, bytes, corrId, e)
+        throw new TooManyRequestError(s"Too many consequent errors on `$realRoutingKey`, wait 5 seconds timeout...", e)
 
       case e: Throwable ⇒
         logs("error", realRoutingKey, bytes, corrId, e)
