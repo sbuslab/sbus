@@ -1,18 +1,17 @@
 buildscript {
-    repositories {
-        jcenter()
+  repositories {
+    maven {
+      url "https://plugins.gradle.org/m2/"
     }
-    dependencies {
-        classpath 'com.bmuschko:gradle-nexus-plugin:2.3.1'
-    }
+  }
 }
 
 plugins {
-    id 'io.codearte.nexus-staging' version '0.21.1' apply false
+    id 'io.codearte.nexus-staging' version '0.30.0' apply false
+    id "com.bmuschko.nexus" version "2.3.1"
 }
 
 apply plugin: 'scala'
-apply plugin: 'com.bmuschko.nexus'
 
 group 'com.sbuslab'
 
@@ -24,6 +23,7 @@ repositories {
 
 if (this.parent == null) {
     apply plugin: 'io.codearte.nexus-staging'
+    apply plugin: 'com.bmuschko.nexus'
 
     nexusStaging {
         packageGroup = 'com.sbuslab'
