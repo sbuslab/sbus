@@ -193,32 +193,30 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
     val pub = Amqp.Publish(channel.exchange, realRoutingKey, bytes, Some(propsBldr.build()), mandatory = channel.mandatory)
 
     (if (responseClass != null) {
-      meter("request", realRoutingKey) {
-        circuitBreaker(realRoutingKey) {
-          rpcClient.ask(RpcClient.Request(pub))(ctx.timeout.fold(defaultTimeout)(_.millis)) map {
-            case RpcClient.Response(deliveries) ⇒
-              logs("resp <~~~", realRoutingKey, deliveries.head.body, corrId)
+      circuitBreaker(realRoutingKey) {
+        rpcClient.ask(RpcClient.Request(pub))(ctx.timeout.fold(defaultTimeout)(_.millis)) map {
+          case RpcClient.Response(deliveries) ⇒
+            logs("resp <~~~", realRoutingKey, deliveries.head.body, corrId)
 
-              val tree = mapper.readTree(deliveries.head.body)
+            val tree = mapper.readTree(deliveries.head.body)
 
-              val status =
-                if (tree.hasNonNull("status")) {
-                  tree.path("status").asInt
-                } else if (tree.path("failed").asBoolean(false)) { // backward compatibility with old protocol
-                  500
-                } else { 200 }
+            val status =
+              if (tree.hasNonNull("status")) {
+                tree.path("status").asInt
+              } else if (tree.path("failed").asBoolean(false)) { // backward compatibility with old protocol
+                500
+              } else { 200 }
 
-              if (status < 400) {
-                deserializeToClass(tree.path("body"), responseClass)
-              } else {
-                val err = mapper.treeToValue(tree.path("body"), classOf[ErrorResponseBody])
-                throw ErrorMessage.fromCode(status, err.getMessage, null, err.getError, err.getLinks, err.getEmbedded)
-              }
+            if (status < 400) {
+              deserializeToClass(tree.path("body"), responseClass)
+            } else {
+              val err = mapper.treeToValue(tree.path("body"), classOf[ErrorResponseBody])
+              throw ErrorMessage.fromCode(status, err.getMessage, null, err.getError, err.getLinks, err.getEmbedded)
+            }
 
-            case other ⇒
-              log.error(s"Unexpected response for `$realRoutingKey`: $other")
-              throw new InternalServerError(s"Unexpected response for `$realRoutingKey`")
-          }
+          case other ⇒
+            log.error(s"Unexpected response for `$realRoutingKey`: $other")
+            throw new InternalServerError(s"Unexpected response for `$realRoutingKey`")
         }
       }
     } else {

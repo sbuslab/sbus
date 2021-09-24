@@ -4,11 +4,11 @@ import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 
 import com.typesafe.config.Config
-import io.prometheus.client.{Gauge, Histogram}
+import io.prometheus.client.{Gauge, Summary}
 
 
 object Transport {
-  val processingSeconds = Histogram.build()
+  val processingSeconds = Summary.build()
     .name("sbus_processing_seconds")
     .help("Sbus processing metrics")
     .labelNames("type", "routingKey")
