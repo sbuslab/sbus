@@ -255,7 +255,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
 
         if (correlationId == "sbus:ping") {
           val pingAt = mapper.readTree(delivery.body).path("body").path("ping").asLong(0)
-          Transport.eventsHeartbeat.labels(routingKey).set(System.currentTimeMillis - pingAt)
+          Transport.eventsHeartbeat.labels(channel.queueNameFormat.format(subscriptionName)).set(System.currentTimeMillis - pingAt)
           return Future.successful(RpcServer.ProcessResult(None))
         }
 
