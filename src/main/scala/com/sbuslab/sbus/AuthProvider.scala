@@ -71,7 +71,7 @@ class AuthProviderImpl(conf: Config) extends AuthProvider {
           || access.get("*").exists(rt ⇒ rt.contains("*") || rt.contains(caller) || rt.intersect(callerGroups).nonEmpty)
           || access.get(routingKey).exists(rt ⇒ rt.contains("*") || rt.contains(caller) || rt.intersect(callerGroups).nonEmpty)) {
 
-          log.trace(s"Sbus: $caller get access to $routingKey")
+          // ok
         } else {
           log.warn(s"Sbus: $caller has no access to $routingKey method!")
         }
