@@ -6,5 +6,5 @@ include:
   - file: /etc/serve/include.d/library.yml
 
 build:
-  - sonarqube: {}
   - gradle: publish
+  - sonarqube: {}
