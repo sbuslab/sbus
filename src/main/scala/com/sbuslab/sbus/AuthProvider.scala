@@ -64,7 +64,7 @@ class AuthProviderImpl(conf: Config) extends AuthProvider {
 
       val routingKey = context.routingKey
 
-      if (vrf.verify(Base64.getUrlDecoder.decode(signature.toString))) {
+      if (vrf.verify(Base64.getUrlDecoder.decode(signature.toString.replace('+', '-').replace('/', '_')))) {
         val callerGroups = groups.getOrElse(caller, Set.empty)
 
         if (caller == originName
