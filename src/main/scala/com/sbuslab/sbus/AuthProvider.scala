@@ -10,6 +10,8 @@ import net.i2p.crypto.eddsa.{EdDSAEngine, EdDSAPrivateKey, EdDSAPublicKey, Utils
 import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveTable, EdDSAPrivateKeySpec, EdDSAPublicKeySpec}
 import org.slf4j.LoggerFactory
 
+import com.sbuslab.model.InternalServerError
+
 
 trait AuthProvider {
   def sign(context: Context, body: Array[Byte]): Context
@@ -25,11 +27,19 @@ class AuthProviderImpl(conf: Config) extends AuthProvider {
 
   private val spec = EdDSANamedCurveTable.getByName("Ed25519")
 
-  private val privKey = new EdDSAPrivateKey(new EdDSAPrivateKeySpec(Utils.hexToBytes(conf.getString("private-key")), spec))
+  private val privKey = new EdDSAPrivateKey(new EdDSAPrivateKeySpec(Utils.hexToBytes(
+    Option(conf.getString("private-key")).filter(_.nonEmpty)
+      .orElse(Option(conf.getString("default-private-key")).filter(_.nonEmpty))
+      .getOrElse(throw new InternalServerError("Missing sbus.auth.private-key configuration!"))
+  ), spec))
 
   private val publicKeys = conf.getConfig("public-keys").atPath("/").getObject("/").asScala.toMap map { case (owner, obj) ⇒
     owner → new EdDSAPublicKey(new EdDSAPublicKeySpec(Utils.hexToBytes(obj.atPath("/").getString("/")), spec))
   }
+
+  private val defaultPublicKey =
+    Option(conf.getString("default-private-key")).filter(_.nonEmpty)
+      .map(pub ⇒ new EdDSAPublicKey(new EdDSAPublicKeySpec(Utils.hexToBytes(pub), spec)))
 
   private val access = conf.getConfig("access").atPath("/").getObject("/").asScala.toMap map { case (resource, obj) ⇒
     resource → obj.atPath("/").getStringList("/").asScala.toSet
@@ -53,9 +63,9 @@ class AuthProviderImpl(conf: Config) extends AuthProvider {
 
   def verify(context: Context, body: Array[Byte]): Unit =
     (for {
-      caller ← context.get(Headers.Origin).map(_.toString)
+      caller    ← context.get(Headers.Origin).map(_.toString)
       signature ← context.get(Headers.Signature)
-      pubKey ← publicKeys.get(caller)
+      pubKey    ← publicKeys.get(caller).orElse(defaultPublicKey)
     } yield {
       val vrf = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
       vrf.initVerify(pubKey)
