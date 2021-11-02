@@ -1,9 +1,11 @@
 package com.sbuslab.sbus
 
+import java.net.{HttpURLConnection, URL}
 import java.security.MessageDigest
 import java.util.Base64
 import scala.collection.JavaConverters._
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.Logger
 import net.i2p.crypto.eddsa.{EdDSAEngine, EdDSAPrivateKey, EdDSAPublicKey, Utils}
@@ -19,7 +21,7 @@ trait AuthProvider {
 }
 
 
-class AuthProviderImpl(conf: Config) extends AuthProvider {
+class AuthProviderImpl(conf: Config, mapper: ObjectMapper) extends AuthProvider {
 
   private val originName = conf.getString("name")
 
@@ -33,9 +35,24 @@ class AuthProviderImpl(conf: Config) extends AuthProvider {
       .getOrElse(throw new InternalServerError("Missing sbus.auth.private-key configuration!"))
   ), spec))
 
-  private val publicKeys = conf.getConfig("public-keys").atPath("/").getObject("/").asScala.toMap map { case (owner, obj) ⇒
+  private val externalPubKeys = Option(conf.getString("consul-public-keys")).filter(_.nonEmpty) flatMap { consulPath ⇒
+    val resp = (new URL(consulPath).openConnection()).asInstanceOf[HttpURLConnection]
+
+    if (resp.getResponseCode == 200) {
+      Some(mapper.readTree(resp.getInputStream).elements().asScala.map({ node ⇒
+        val pubKey = mapper.readTree(Base64.getDecoder.decode(node.path("Value").asText())).path("publicKey").asText()
+
+        node.path("Key").asText().stripPrefix("services/keys/public/") →
+          new EdDSAPublicKey(new EdDSAPublicKeySpec(Utils.hexToBytes(pubKey), spec))
+      }).toMap)
+    } else {
+      None
+    }
+  } getOrElse Map.empty
+
+  private val publicKeys = externalPubKeys ++ (conf.getConfig("public-keys").atPath("/").getObject("/").asScala.toMap map { case (owner, obj) ⇒
     owner → new EdDSAPublicKey(new EdDSAPublicKeySpec(Utils.hexToBytes(obj.atPath("/").getString("/")), spec))
-  }
+  })
 
   private val defaultPublicKey =
     Option(conf.getString("default-private-key")).filter(_.nonEmpty)
