@@ -23,7 +23,7 @@ trait AuthProvider {
 
 class AuthProviderImpl(conf: Config, mapper: ObjectMapper) extends AuthProvider {
 
-  private val originName = conf.getString("name")
+  private val serviceName = conf.getString("name")
 
   private val log = Logger(LoggerFactory.getLogger("sbus.auth"))
 
@@ -74,7 +74,7 @@ class AuthProviderImpl(conf: Config, mapper: ObjectMapper) extends AuthProvider 
     signer.update(body)
 
     context
-      .withValue(Headers.Origin, originName)
+      .withValue(Headers.Origin, serviceName)
       .withValue(Headers.Signature, Base64.getUrlEncoder.encodeToString(signer.sign()))
   }
 
@@ -94,7 +94,7 @@ class AuthProviderImpl(conf: Config, mapper: ObjectMapper) extends AuthProvider 
       if (vrf.verify(Base64.getUrlDecoder.decode(signature.toString.replace('+', '-').replace('/', '_')))) {
         val callerGroups = groups.getOrElse(caller, Set.empty)
 
-        if (caller == originName
+        if (caller == serviceName
           || access.get("*").exists(rt ⇒ rt.contains("*") || rt.contains(caller) || rt.intersect(callerGroups).nonEmpty)
           || access.get(routingKey).exists(rt ⇒ rt.contains("*") || rt.contains(caller) || rt.intersect(callerGroups).nonEmpty)) {
 
