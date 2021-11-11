@@ -103,7 +103,7 @@ class AuthProviderImpl(conf: Config, mapper: ObjectMapper) extends AuthProvider 
           log.warn(s"Sbus: $caller has no access to $routingKey method!")
         }
       } else {
-        log.warn(s"Incorrect internal request signature: $caller → $routingKey ($signature)")
+        log.warn(s"Incorrect internal request signature: $caller → $routingKey ($signature) / pub: ${Utils.bytesToHex(pubKey.asInstanceOf[EdDSAPublicKey].getAbyte)}")
       }
     }) getOrElse {
       log.debug(s"Unauthenticated sbus request: ${context.routingKey}, caller: ${context.get(Headers.Origin)}")
