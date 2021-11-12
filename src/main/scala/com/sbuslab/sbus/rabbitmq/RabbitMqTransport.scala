@@ -22,6 +22,7 @@ import com.typesafe.scalalogging.Logger
 import org.slf4j.{LoggerFactory, MDC}
 
 import com.sbuslab.model._
+import com.sbuslab.model.scheduler.ScheduleCommand
 import com.sbuslab.sbus.{AuthProvider, Context, Headers, Transport}
 
 
@@ -164,7 +165,12 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
     val corrId = Option(context.correlationId).getOrElse(UUID.randomUUID().toString)
     val time   = System.currentTimeMillis()
 
-    val ctx = authProvider.sign(context.withValue(Headers.Timestamp, time), bytes)
+    val ctx = authProvider.sign(context.withValue(Headers.Timestamp, time), msg match {
+      case sch: ScheduleCommand ⇒
+        jsonWriter.writeValueAsBytes(new Message(sch.getRoutingKey, sch.getBody))
+
+      case _ ⇒ bytes
+    })
 
     val propsBldr = new BasicProperties().builder()
       .deliveryMode(if (responseClass != null) 1 else 2) // 2 → persistent
