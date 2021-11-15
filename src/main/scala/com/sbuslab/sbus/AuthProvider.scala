@@ -73,12 +73,9 @@ class AuthProviderImpl(conf: Config, mapper: ObjectMapper) extends AuthProvider 
 
     signer.update(body)
 
-    val signature = Base64.getUrlEncoder.encodeToString(signer.sign())
-    log.trace(s"Sign: $serviceName → $signature / ${new String(body)}")
-
     context
       .withValue(Headers.Origin, serviceName)
-      .withValue(Headers.Signature, signature)
+      .withValue(Headers.Signature, Base64.getUrlEncoder.encodeToString(signer.sign()))
   }
 
   def verify(context: Context, body: Array[Byte]): Unit =
