@@ -415,7 +415,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
     createRpcActor()
 
     if (channel.heartbeat) {
-      actorSystem.scheduler.schedule(1.minute, 1.minute) {
+      actorSystem.scheduler.scheduleAtFixedRate(1.minute, 1.minute) { () ⇒
         try send(routingKey, SbusPing(System.currentTimeMillis), context = Context.withCorrelationId("sbus:ping"), null) catch { case _: Throwable ⇒ }
       }
     }
