@@ -124,7 +124,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
   private val breakers = new ConcurrentHashMap[String, CircuitBreaker]()
   private val circuitBreakerEnabled = conf.getBoolean("circuit-breaker.enabled")
 
-  private def circuitBreaker[T](routingKey: String)(f: Future[T]): Future[T] =
+  private def circuitBreaker[T](routingKey: String)(f: ⇒ Future[T]): Future[T] =
     if (circuitBreakerEnabled) {
       breakers.computeIfAbsent(routingKey, _ ⇒ {
         new CircuitBreaker(
