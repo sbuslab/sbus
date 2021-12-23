@@ -43,6 +43,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
 
   private val LogTrimLength         = conf.getInt("log-trim-length")
   private val UnloggedRequests      = conf.getStringList("unlogged-requests").asScala.toSet
+  private val SubscriptionWhitelist = conf.getStringList("subscription-whitelist").asScala.toSet
   private val DefaultCommandRetries = conf.getInt("default-command-retries")
   private val ChannelParams         = Amqp.ChannelParameters(qos = conf.getInt("prefetch-count"), global = false)
 
@@ -251,6 +252,11 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
    */
   def subscribe[T](routingKey: String, messageClass: Class[_], handler: (T, Context) ⇒ Future[Any]): Unit = {
     require(messageClass != null, "messageClass is required!")
+
+    if (SubscriptionWhitelist.nonEmpty && !SubscriptionWhitelist.contains(routingKey)) {
+      log.info(s"Skip $routingKey sbus subscription (not in whitelist).")
+      return
+    }
 
     val channel = getChannel(routingKey)
     val subscriptionName = routingKey.split(':').last
