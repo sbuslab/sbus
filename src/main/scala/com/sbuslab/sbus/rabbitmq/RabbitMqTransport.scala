@@ -166,7 +166,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
     val corrId = Option(context.correlationId).getOrElse(UUID.randomUUID().toString)
     val time   = System.currentTimeMillis()
 
-    val ctx = authProvider.sign(context.withValue(Headers.Timestamp, time), msg match {
+    val ctx = authProvider.sign(context.withValue(Headers.Timestamp, time.toString), msg match {
       case sch: ScheduleCommand ⇒
         jsonWriter.writeValueAsBytes(new Message(sch.getRoutingKey, sch.getBody))
 
