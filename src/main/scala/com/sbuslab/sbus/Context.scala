@@ -38,7 +38,7 @@ case class Context(data: Map[String, Any] = Map.empty) {
   def withRetries(max: Int): Context                    = withValue(Headers.RetryAttemptsMax, max)
   def withRoutingKey(key: String): Context              = withValue(Headers.RoutingKey, key)
 
-  def customData = data -- Context.allowedHeaders
+  def customData = data -- (Context.allowedHeaders - Headers.Ip)
 }
 
 
