@@ -166,7 +166,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
     val corrId = Option(context.correlationId).getOrElse(UUID.randomUUID().toString)
     val time   = System.currentTimeMillis()
 
-    val ctx = authProvider.sign(context.withValue(Headers.Timestamp, time.toString), msg match {
+    implicit val ctx = authProvider.sign(context.withValue(Headers.Timestamp, time.toString), msg match {
       case sch: ScheduleCommand ⇒
         jsonWriter.writeValueAsBytes(new Message(sch.getRoutingKey, sch.getBody))
 
@@ -263,9 +263,9 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
 
     val processor = new RpcServer.IProcessor {
       def process(delivery: Amqp.Delivery): Future[RpcServer.ProcessResult] = {
-        val correlationId = getCorrelationId(delivery)
+        implicit val context = Context.from(delivery)
 
-        if (correlationId == "sbus:ping") {
+        if (context.correlationId == "sbus:ping") {
           val pingAt = mapper.readTree(delivery.body).path("body").path("ping").asLong(0)
           Transport.eventsHeartbeat.labels(channel.queueNameFormat.format(subscriptionName)).set(System.currentTimeMillis - pingAt)
           return Future.successful(RpcServer.ProcessResult(None))
@@ -273,14 +273,12 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
 
         meter("handle", subscriptionName) {
           (try {
-            logs("<~~~", subscriptionName, delivery.body, correlationId)
+            logs("<~~~", subscriptionName, delivery.body, context.correlationId)
 
             val payload = (Option(mapper.readTree(delivery.body)).map(_.get("body")).orNull match {
               case null ⇒ null
               case body ⇒ deserializeToClass(body, messageClass)
             }).asInstanceOf[T]
-
-            val context = Context.from(delivery)
 
             authProvider.verify(context, delivery.body)
 
@@ -290,7 +288,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
           }) map {
             case result if delivery.properties.getReplyTo != null ⇒
               val bytes = jsonWriter.writeValueAsBytes(new Response(200, result))
-              logs("resp ~~~>", subscriptionName, bytes, correlationId)
+              logs("resp ~~~>", subscriptionName, bytes, context.correlationId)
               RpcServer.ProcessResult(Some(bytes))
 
             case _ ⇒ RpcServer.ProcessResult(None)
@@ -321,10 +319,10 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
 
                 // if message will be expired before next attempt — skip it
                 if (Option(heads.get(Headers.ExpiredAt)).exists(_.toString.toLong <= System.currentTimeMillis() + backoff)) {
-                  logs("timeout", originRoutingKey, s"Message will be expired at ${heads.get(Headers.ExpiredAt)}, don't retry it!".getBytes, correlationId, e)
+                  logs("timeout", originRoutingKey, s"Message will be expired at ${heads.get(Headers.ExpiredAt)}, don't retry it!".getBytes, context.correlationId, e)
                   Future.failed(e)
                 } else {
-                  logs("error", originRoutingKey, s"$e. Retry attempt ${attemptNr} after ${updProps.getExpiration} millis...".getBytes, correlationId, e)
+                  logs("error", originRoutingKey, s"$e. Retry attempt ${attemptNr} after ${updProps.getExpiration} millis...".getBytes, context.correlationId, e)
 
                   channel.producer ? Amqp.Publish(channel.retryExchange, channel.queueNameFormat.format(originRoutingKey), delivery.body, Some(updProps), mandatory = false) map {
                     case _: Amqp.Ok ⇒ RpcServer.ProcessResult(None)
@@ -343,7 +341,9 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       }
 
       def onFailure(delivery: Amqp.Delivery, e: Throwable): RpcServer.ProcessResult = {
-        logs("error", subscriptionName, e.toString.getBytes, getCorrelationId(delivery), e)
+        implicit val context = Context.from(delivery)
+
+        logs("error", subscriptionName, e.toString.getBytes, context.correlationId, e)
 
         if (delivery.properties.getReplyTo != null) {
           val response = e match {
@@ -352,7 +352,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
           }
 
           val bytes = jsonWriter.writeValueAsBytes(response)
-          logs("resp ~~~>", subscriptionName, bytes, getCorrelationId(delivery))
+          logs("resp ~~~>", subscriptionName, bytes, context.correlationId)
           RpcServer.ProcessResult(Some(bytes))
         } else {
           RpcServer.ProcessResult(None)
@@ -438,18 +438,15 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
     }
   }
 
-  private def getCorrelationId(delivery: Amqp.Delivery): String = {
-    val heads = delivery.properties.getHeaders
-
-    if (heads != null) {
-      val id = heads.get(Headers.CorrelationId)
-      if (id == null) null else id.toString
-    } else null
-  }
-
-  private def logs(prefix: String, routingKey: String, body: Array[Byte], correlationId: String, e: Throwable = null) {
+  private def logs(prefix: String, routingKey: String, body: Array[Byte], correlationId: String, e: Throwable = null)(implicit context: Context) {
     if (e != null || (log.underlying.isTraceEnabled && !UnloggedRequests.contains(routingKey))) {
       MDC.put("correlation_id", correlationId)
+
+      val fields = context.customData
+
+      if (fields.nonEmpty) {
+        MDC.put("meta", mapper.writeValueAsString(fields))
+      }
 
       val msg = s"sbus $prefix $routingKey: ${new String(body.take(LogTrimLength))}"
 
@@ -461,6 +458,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       }
 
       MDC.remove("correlation_id")
+      MDC.remove("meta")
     }
   }
 }
