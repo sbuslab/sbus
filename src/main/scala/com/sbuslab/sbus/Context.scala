@@ -22,6 +22,9 @@ case class Context(data: Map[String, String] = Map.empty) {
   def ip: String              = get(Headers.Ip).orNull
   def userAgent: String       = get(Headers.UserAgent).orNull
 
+  def withValue(key: String, value: Any): Context =
+    withValue(key, if (value != null) value.toString else null)
+
   def withValue(key: String, value: String): Context =
     if (value == null) {
       copy(data = data - key)
