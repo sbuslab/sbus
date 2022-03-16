@@ -190,6 +190,8 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
         Headers.Ip               → ctx.ip,
         Headers.UserAgent        → ctx.userAgent,
         Headers.Origin           → ctx.get(Headers.Origin).orNull,
+        Headers.UserId           → ctx.get(Headers.UserId).orNull,
+        Headers.Auth             → ctx.get(Headers.Auth).orNull,
         Headers.Signature        → ctx.get(Headers.Signature).orNull,
       ).filter(_._2 != null).mapValues(_.toString.asInstanceOf[Object]).asJava)
 

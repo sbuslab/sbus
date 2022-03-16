@@ -41,7 +41,7 @@ case class Context(data: Map[String, String] = Map.empty) {
   def withRetries(max: Int): Context                    = withValue(Headers.RetryAttemptsMax, max.toString)
   def withRoutingKey(key: String): Context              = withValue(Headers.RoutingKey, key)
 
-  def customData = data -- (Context.allowedHeaders - Headers.Ip)
+  def customData = data -- Context.notLoggedHeaders
 }
 
 
@@ -58,10 +58,14 @@ object Context {
     Headers.Timestamp,
     Headers.ExpiredAt,
     Headers.Ip,
+    Headers.UserId,
+    Headers.Auth,
     Headers.UserAgent,
     Headers.Origin,
     Headers.Signature,
   )
+
+  private val notLoggedHeaders = allowedHeaders -- Set(Headers.Ip, Headers.UserId, Headers.Auth)
 
   def empty = emptyContext
   def withNewCorrelationId() = emptyContext.withNewCorrelationId()

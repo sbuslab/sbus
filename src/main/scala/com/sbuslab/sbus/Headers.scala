@@ -14,4 +14,6 @@ object Headers {
   val UserAgent        = "userAgent"
   val Origin           = "origin"
   val Signature        = "signature"
+  val UserId           = "userId"
+  val Auth             = "auth"
 }
