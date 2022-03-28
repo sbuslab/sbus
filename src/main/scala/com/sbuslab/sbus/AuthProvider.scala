@@ -36,7 +36,7 @@ class AuthProviderImpl(conf: Config, mapper: ObjectMapper) extends AuthProvider 
   ), spec))
 
   private val externalPubKeys = Option(conf.getString("consul-public-keys")).filter(_.nonEmpty) flatMap { consulPath ⇒
-    val resp = try (new URL(consulPath).openConnection()).asInstanceOf[HttpURLConnection] catch {
+    val resp = try new URL(consulPath).openConnection().asInstanceOf[HttpURLConnection] catch {
       case e: Throwable ⇒ throw new InternalServerError(s"Sbus auth: couldn't fetch public keys from $consulPath endpoint: ${e.getMessage}", e)
     }
 
