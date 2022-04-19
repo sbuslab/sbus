@@ -8,22 +8,22 @@ buildscript {
 
 plugins {
     id 'io.codearte.nexus-staging' version '0.30.0' apply false
-    id "com.bmuschko.nexus" version "2.3.1"
+    id "maven-publish"
 }
 
 apply plugin: 'scala'
+apply plugin: 'java-library'
 
 group 'com.sbuslab'
 
 repositories {
     maven { url 'https://oss.sonatype.org/content/repositories/public' }
     mavenCentral()
-    jcenter()
 }
 
 if (this.parent == null) {
     apply plugin: 'io.codearte.nexus-staging'
-    apply plugin: 'com.bmuschko.nexus'
+    apply plugin: 'maven-publish'
 
     nexusStaging {
         packageGroup = 'com.sbuslab'
@@ -33,46 +33,74 @@ if (this.parent == null) {
     }
 }
 
-modifyPom {
-    project {
-        name 'sbus'
-        description 'Multitransport service bus'
-        url 'https://github.com/sbuslab/sbus'
-        inceptionYear '2018'
-        scm {
-            url 'https://github.com/sbuslab/sbus'
-            connection 'scm:https://github.com/sbuslab/sbus.git'
-            developerConnection 'scm:git://github.com/sbuslab/sbus.git'
-        }
-        licenses {
-            license {
-                name 'The Apache Software License, Version 2.0'
-                url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
-                distribution 'repo'
+publishing {
+        publications {
+        mavenJava(MavenPublication) {
+            artifactId = 'sbus'
+            from components.java
+            versionMapping {
+                usage('java-api') {
+                    fromResolutionOf('runtimeClasspath')
+                }
+                usage('java-runtime') {
+                    fromResolutionResult()
+                }
+            }
+            pom {
+                name = 'sbus'
+                description = 'Multitransport service bus'
+                url = 'https://github.com/sbuslab/sbus'
+                inceptionYear = '2018'
+
+                licenses {
+                    license {
+                        name = 'The Apache Software License, Version 2.0'
+                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                        distribution = 'repo'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id = 'kulikovd'
+                        name = 'Dmitry Kulikov'
+                        email = 'kulikov.dm@gmail.com'
+                    }
+                }
+
+                scm {
+                    url = 'https://github.com/sbuslab/sbus'
+                    connection = 'scm:https://github.com/sbuslab/sbus.git'
+                    developerConnection = 'scm:git@github.com:sbuslab/sbus.git'
+                }
             }
         }
-        developers {
-            developer {
-                id 'kulikovd'
-                name 'Dmitry Kulikov'
-                email 'kulikov.dm@gmail.com'
+    }
+    repositories {
+        maven {
+            def releasesRepoUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2"
+            def snapshotsRepoUrl = "https://oss.sonatype.org/content/repositories/snapshots"
+            url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+
+            credentials {
+                username = project.findProperty('nexusUsername') ?: ''
+                password = project.findProperty('nexusPassword') ?: ''
             }
         }
     }
 }
 
 dependencies {
-    compile 'com.sbuslab:model:[1.1.0,1.2.0)'
+    api 'com.sbuslab:model:[1.1.0,1.2.0)'
 
-    compile 'com.typesafe.akka:akka-actor_2.12:2.6.17'
-    compile 'com.typesafe.akka:akka-slf4j_2.12:2.6.17'
+    api 'com.typesafe.akka:akka-actor_2.12:2.6.17'
+    implementation 'com.typesafe.akka:akka-slf4j_2.12:2.6.17'
+    api 'com.typesafe.scala-logging:scala-logging_2.12:3.9.4'
 
-    compile 'com.rabbitmq:amqp-client:5.14.0'
-    compile 'eu.shiftforward:amqp-client_2.12:1.6.6'
+    implementation 'com.rabbitmq:amqp-client:5.14.0'
+    implementation 'eu.shiftforward:amqp-client_2.12:1.6.6'
 
-    compile 'io.prometheus:simpleclient:0.12.0'
+    implementation 'io.prometheus:simpleclient:0.12.0'
 
-    compile 'net.i2p.crypto:eddsa:0.3.0'
-
-    compile 'com.typesafe.scala-logging:scala-logging_2.12:3.9.4'
+    implementation 'net.i2p.crypto:eddsa:0.3.0'
 }
