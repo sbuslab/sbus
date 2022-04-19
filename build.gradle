@@ -76,18 +76,18 @@ publishing {
             }
         }
     }
-    repositories {
-        maven {
-            def releasesRepoUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2"
-            def snapshotsRepoUrl = "https://oss.sonatype.org/content/repositories/snapshots"
-            url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
-
-            credentials {
-                username = project.findProperty('nexusUsername') ?: ''
-                password = project.findProperty('nexusPassword') ?: ''
-            }
-        }
-    }
+//    repositories {
+//        maven {
+//            def releasesRepoUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2"
+//            def snapshotsRepoUrl = "https://oss.sonatype.org/content/repositories/snapshots"
+//            url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+//
+//            credentials {
+//                username = project.findProperty('nexusUsername') ?: ''
+//                password = project.findProperty('nexusPassword') ?: ''
+//            }
+//        }
+//    }
 }
 
 dependencies {
