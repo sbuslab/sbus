@@ -15,7 +15,7 @@ import org.scalatest.junit.JUnitRunner
 import com.sbuslab.sbus.auth.{Action, Identity}
 
 @RunWith(classOf[JUnitRunner])
-class ConsulProviderTest extends AsyncWordSpec with Matchers with BeforeAndAfterEach {
+class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with BeforeAndAfterEach {
 
   val Host   = "localhost"
   val Port   = 4893
@@ -40,7 +40,7 @@ class ConsulProviderTest extends AsyncWordSpec with Matchers with BeforeAndAfter
 
   case class TestSuite(config: String = defaultConfig) {
 
-    val underTest = ConsulProvider(
+    val underTest = ConsulAuthConfigProvider(
       ConfigFactory
         .parseString(config)
         .resolve(),

@@ -14,7 +14,7 @@ import org.scalatest.junit.JUnitRunner
 import org.scalatest.mockito.MockitoSugar
 
 import com.sbuslab.sbus.auth.{Action, Identity}
-import com.sbuslab.sbus.auth.providers.ConsulProvider
+import com.sbuslab.sbus.auth.providers.ConsulAuthConfigProvider
 
 @RunWith(classOf[JUnitRunner])
 class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar {
@@ -46,7 +46,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       | }}""".stripMargin
 
   case class TestSuite(config: String = defaultConfig, required: Boolean = true) {
-    val mockDynamicProvider = mock[ConsulProvider]
+    val mockDynamicProvider = mock[ConsulAuthConfigProvider]
 
     val keyPair  = new KeyPairGenerator().generateKeyPair
     val keyPair2 = new KeyPairGenerator().generateKeyPair

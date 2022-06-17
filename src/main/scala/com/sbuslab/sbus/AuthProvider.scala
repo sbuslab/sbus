@@ -12,7 +12,7 @@ import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveTable, EdDSAPrivateKeySpec, EdD
 import org.slf4j.LoggerFactory
 
 import com.sbuslab.model.InternalServerError
-import com.sbuslab.sbus.auth.{Action, DynamicProvider, Identity}
+import com.sbuslab.sbus.auth.{Action, DynamicAuthConfigProvider, Identity}
 
 trait AuthProvider {
   def sign(context: Context, body: Array[Byte]): Context
@@ -20,7 +20,7 @@ trait AuthProvider {
   def authorize(context: Context): Boolean
 }
 
-case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider: DynamicProvider)
+case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider: DynamicAuthConfigProvider)
     extends AuthProvider {
 
   val Log = Logger(LoggerFactory.getLogger("sbus.auth"))
