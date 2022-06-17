@@ -287,7 +287,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
             }
 
             if (!authProvider.authorize(context)) {
-              throw new UnauthorizedError("Sbus call not authorized to send message")
+              throw new UnauthorizedError("Sbus caller not authorized to send message")
             }
 
             handler(payload, context)
