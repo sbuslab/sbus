@@ -282,7 +282,13 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
               case body ⇒ deserializeToClass(body, messageClass)
             }).asInstanceOf[T]
 
-            authProvider.verify(context, delivery.body)
+            if (!authProvider.verify(context, delivery.body)) {
+              throw new UnauthorizedError("Sbus message can not be verified")
+            }
+
+            if (!authProvider.authorize(context)) {
+              throw new UnauthorizedError("Sbus call not authorized to send message")
+            }
 
             handler(payload, context)
           } catch {
