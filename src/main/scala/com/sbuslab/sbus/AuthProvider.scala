@@ -98,21 +98,26 @@ case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider:
       if (caller == serviceName) {
         true
       } else {
-        getIdentities.get(caller) map { identity ⇒
-          getActions.get(routingKey).orElse(getActions.get("*"))
-            .map(action ⇒
-              (identity.isMemberOfAny(action.permissions) || action.permissions.contains(caller) || action.permissions.contains("*")) || !isRequired
-            )
-            .getOrElse {
-              Log.warn(s"No access to sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}")
-              !isRequired
+        val identity = getIdentities.getOrElse(caller, Identity(Set("*")))
+        getActions.get(routingKey).orElse(getActions.get("*"))
+          .map { action ⇒
+            val authorized =
+              identity.isMemberOfAny(action.permissions) || action.permissions.contains(caller) || action.permissions.contains(
+                "*"
+              )
+            if (!authorized) {
+              Log.warn(
+                s"Unauthorised sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}"
+              )
             }
-        } getOrElse {
-          Log.warn(
-            s"No identity configured for sbus request caller: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}"
-          )
-          !isRequired
-        }
+            authorized || !isRequired
+          }
+          .getOrElse {
+            Log.warn(
+              s"No action defined for sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}"
+            )
+            !isRequired
+          }
       }
     }) getOrElse {
       Log.warn(

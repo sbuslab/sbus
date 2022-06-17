@@ -43,7 +43,7 @@ case class ConsulAuthConfigProvider(
             Some(mapper.readTree(resp.getInputStream).elements().asScala.map { node ⇒
               val pubKey = mapper.readTree(Base64.getDecoder.decode(node.path("Value").asText())).path("publicKey").asText()
 
-              node.path("Key").asText().stripPrefix(s"$publicKeysPath/") → new EdDSAPublicKey(new EdDSAPublicKeySpec(
+              node.path("Key").asText().stripPrefix(s"$publicKeysPath").stripPrefix("/") → new EdDSAPublicKey(new EdDSAPublicKeySpec(
                 Utils.hexToBytes(pubKey),
                 spec
               ))
@@ -86,7 +86,7 @@ case class ConsulAuthConfigProvider(
               val permissions =
                 mapper.readValue(Base64.getDecoder.decode(node.path("Value").asText()), classOf[java.util.Set[String]]).asScala.toSet
 
-              node.path("Key").asText().stripPrefix(s"$identitiesPath/") → Identity(permissions)
+              node.path("Key").asText().stripPrefix(s"$identitiesPath").stripPrefix("/") → Identity(permissions)
             }.toMap)
           } else {
             None

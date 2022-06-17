@@ -314,6 +314,21 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       authorized should equal(true)
     }
 
+    "authorize messages when unknown origin is authorized by action by wildcard" in {
+      val test = TestSuite()
+
+      when(test.mockDynamicProvider.getActions).thenReturn(Map[String, Action]())
+      when(test.mockDynamicProvider.getIdentities).thenReturn(Map[String, Identity]())
+
+      val context = Context.empty
+        .withValue(Headers.Origin, "users/foo.bar")
+        .withValue(Headers.RoutingKey, "users.update-user")
+
+      val authorized = test.underTest.authorize(context)
+
+      authorized should equal(true)
+    }
+
     "authorize messages when origin is authorized by wildcard for action and permission" in {
       val test = TestSuite()
 
