@@ -98,7 +98,7 @@ case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider:
       if (caller == serviceName) {
         true
       } else {
-        val identity = getIdentities.getOrElse(caller, Identity(Set("*")))
+        val identity = getIdentities.getOrElse(caller, Identity(Set()))
         getActions.get(routingKey).orElse(getActions.get("*"))
           .map { action ⇒
             val authorized =

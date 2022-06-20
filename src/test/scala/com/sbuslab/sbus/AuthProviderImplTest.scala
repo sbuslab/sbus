@@ -63,7 +63,8 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
           "public-keys",
           ConfigValueFactory.fromMap(Map[String, String](
             ("services/my-service", Utils.bytesToHex(keyPair.getPublic.asInstanceOf[EdDSAPublicKey].getAbyte)),
-            ("services/other-service", Utils.bytesToHex(keyPair2.getPublic.asInstanceOf[EdDSAPublicKey].getAbyte))
+            ("services/other-service", Utils.bytesToHex(keyPair2.getPublic.asInstanceOf[EdDSAPublicKey].getAbyte)),
+            ("services/javascript-service", "f19ff401eafa8797da096317d11b5b7e9671282ea2b96458fb5379668ce9986f")
           ).asJava)
         )
         .resolve(),
@@ -111,8 +112,6 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
         body,
         test.keyPair.getPublic.asInstanceOf[EdDSAPublicKey]
       )
-
-      test.underTest.verify(result, body)
 
       verified should equal(true)
     }
@@ -419,6 +418,21 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       val authorized = test.underTest.authorize(context)
 
       authorized should equal(false)
+    }
+
+    "verifies javascript generated signatures" in {
+      val test = TestSuite()
+
+      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
+
+      val body    = "{}".getBytes
+      val context = Context.empty
+        .withValue(Headers.Origin, "services/javascript-service")
+        .withValue(Headers.Signature, "_kZha4eQ5oloREMlQoiXTDo4StVZnHupCewiz7lweGKNN_UXxTZLMwkyM0hJGEf8-MFyS0JEDabgKzmaeOAiDw")
+
+      val verified = test.underTest.verify(context, body)
+
+      verified should equal(true)
     }
   }
 }
