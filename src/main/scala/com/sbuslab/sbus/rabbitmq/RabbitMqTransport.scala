@@ -284,7 +284,9 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
               case body ⇒ deserializeToClass(body, messageClass)
             }).asInstanceOf[T]
 
-            authProvider.authorize(context, delivery.body) recover { case e ⇒
+            authProvider.verify(context, delivery.body) flatMap { _ ⇒
+              authProvider.authorize(context)
+            } recover { case e ⇒
               logs("auth error", subscriptionName, delivery.body, context.correlationId, e)
               throw new UnauthorizedError("Sbus message can not be verified or authorized", e)
             }
