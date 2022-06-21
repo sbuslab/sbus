@@ -56,6 +56,7 @@ case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider:
     signer.initSign(privKey)
 
     signer.update(body)
+    context.get(Headers.Timestamp) foreach { timestamp ⇒ signer.update(timestamp.getBytes) }
 
     context
       .withValue(Headers.Origin, serviceName)
@@ -76,6 +77,7 @@ case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider:
       vrf.initVerify(pubKey)
 
       vrf.update(body)
+      context.get(Headers.Timestamp) foreach { timestamp ⇒ vrf.update(timestamp.getBytes) }
 
       if (vrf.verify(Base64.getUrlDecoder.decode(signature.replace('+', '-').replace('/', '_')))) {
         true
