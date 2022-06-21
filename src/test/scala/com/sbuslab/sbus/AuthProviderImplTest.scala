@@ -64,7 +64,8 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
           ConfigValueFactory.fromMap(Map[String, String](
             ("services/my-service", Utils.bytesToHex(keyPair.getPublic.asInstanceOf[EdDSAPublicKey].getAbyte)),
             ("services/other-service", Utils.bytesToHex(keyPair2.getPublic.asInstanceOf[EdDSAPublicKey].getAbyte)),
-            ("services/javascript-service", "f19ff401eafa8797da096317d11b5b7e9671282ea2b96458fb5379668ce9986f")
+            ("services/javascript-service", "f19ff401eafa8797da096317d11b5b7e9671282ea2b96458fb5379668ce9986f"),
+            ("services/cli-service", "59842ab5f5d5b515126eb86a799d9fa4547b1b42209ca7ff96a189d4bd2f3130")
           ).asJava)
         )
         .resolve(),
@@ -444,6 +445,22 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       val context = Context.empty
         .withValue(Headers.Origin, "services/javascript-service")
         .withValue(Headers.Signature, "_kZha4eQ5oloREMlQoiXTDo4StVZnHupCewiz7lweGKNN_UXxTZLMwkyM0hJGEf8-MFyS0JEDabgKzmaeOAiDw")
+
+      val verified = test.underTest.verify(context, body)
+
+      verified should equal(true)
+    }
+
+    "verifies cli generated signatures" in {
+      val test = TestSuite()
+
+      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
+      when(test.mockDynamicProvider.isRequired).thenReturn(true)
+
+      val body    = "{}".getBytes
+      val context = Context.empty
+        .withValue(Headers.Origin, "services/cli-service")
+        .withValue(Headers.Signature, "oS2xBo6ZzEu-rlMDRHuw5FxViP1SBjHL6pdJO8qh1tLGtOBNeytpE9J56r42PAxoAiyp5rsJqze5xuFEtjsQAA==")
 
       val verified = test.underTest.verify(context, body)
 

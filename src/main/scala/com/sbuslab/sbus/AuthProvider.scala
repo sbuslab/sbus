@@ -68,7 +68,9 @@ case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider:
       signature ← context.get(Headers.Signature)
       pubKey    ← getPublicKeys.get(caller)
     } yield {
-      Log.debug(s"Verifying sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}")
+      Log.debug(
+        s"Verifying sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}, signature: $signature, pubKey: ${Utils.bytesToHex(pubKey.getAbyte)}"
+      )
 
       val vrf = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
       vrf.initVerify(pubKey)
@@ -79,13 +81,15 @@ case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider:
         true
       } else {
         Log.warn(
-          s"Signature invalid for sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}"
+          s"Signature invalid for sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}, signature: $signature"
         )
         !isRequired
       }
     }) getOrElse {
       Log.warn(
-        s"Unauthenticated sbus request: ${context.routingKey}, caller ${context.get(Headers.Origin)}, ip ${context.ip}, message ${context.messageId}"
+        s"Unauthenticated sbus request: ${context.routingKey}, caller ${context.get(
+          Headers.Origin
+        )}, ip ${context.ip}, message ${context.messageId}, signature: ${context.get(Headers.Signature)}"
       )
       !isRequired
     }
