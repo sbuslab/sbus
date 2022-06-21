@@ -13,9 +13,11 @@ import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveTable, EdDSAPublicKeySpec}
 import com.sbuslab.model.InternalServerError
 import com.sbuslab.sbus.auth.{Action, DynamicAuthConfigProvider, Identity}
 
+
 case class ConsulAuthConfigProvider(
   conf: Config,
   mapper: ObjectMapper) extends DynamicAuthConfigProvider {
+
   case class CachedObject(expiredAt: Long, obj: Any)
 
   val cache = new ConcurrentHashMap[String, CachedObject]()
