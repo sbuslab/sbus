@@ -63,6 +63,7 @@ case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider:
     signer.initSign(privKey)
 
     signer.update(body)
+    context.get(Headers.Timestamp) foreach { timestamp ⇒ signer.update(timestamp.getBytes) }
 
     context
       .withValue(Headers.Origin, serviceName)
@@ -78,6 +79,7 @@ case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider:
       val vrf = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
       vrf.initVerify(pubKey)
       vrf.update(body)
+      context.get(Headers.Timestamp) foreach { timestamp ⇒ vrf.update(timestamp.getBytes) }
 
       if (!vrf.verify(Base64.getUrlDecoder.decode(signature.replace('+', '-').replace('/', '_')))) {
         return failure(s"Signature invalid for sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}, signature: $signature")
