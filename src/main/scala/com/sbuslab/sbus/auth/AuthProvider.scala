@@ -1,8 +1,11 @@
-package com.sbuslab.sbus
+package com.sbuslab.sbus.auth
+
+import scala.language.postfixOps
 
 import java.security.MessageDigest
 import java.util.Base64
 import scala.collection.JavaConverters._
+import scala.util.{Failure, Success, Try}
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.typesafe.config.Config
@@ -12,7 +15,7 @@ import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveTable, EdDSAPrivateKeySpec, EdD
 import org.slf4j.LoggerFactory
 
 import com.sbuslab.model.InternalServerError
-import com.sbuslab.sbus.auth.{Action, DynamicAuthConfigProvider, Identity}
+import com.sbuslab.sbus.{Context, Headers}
 
 trait AuthProvider {
   def sign(context: Context, body: Array[Byte]): Context

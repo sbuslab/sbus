@@ -14,7 +14,7 @@ import org.scalatest.{AsyncWordSpec, Matchers}
 import org.scalatest.junit.JUnitRunner
 import org.scalatest.mockito.MockitoSugar
 
-import com.sbuslab.sbus.auth.{Action, Identity}
+import com.sbuslab.sbus.auth.{Action, AuthProviderImpl, Identity}
 import com.sbuslab.sbus.auth.providers.ConsulAuthConfigProvider
 
 @RunWith(classOf[JUnitRunner])
