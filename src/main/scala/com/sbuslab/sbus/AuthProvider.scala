@@ -23,7 +23,7 @@ trait AuthProvider {
 case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider: DynamicAuthConfigProvider)
     extends AuthProvider {
 
-  val Log = Logger(LoggerFactory.getLogger("sbus.auth"))
+  val log = Logger(LoggerFactory.getLogger("sbus.auth"))
 
   val spec = EdDSANamedCurveTable.getByName("Ed25519")
 
@@ -69,7 +69,7 @@ case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider:
       signature ← context.get(Headers.Signature)
       pubKey    ← getPublicKeys.get(caller)
     } yield {
-      Log.debug(
+      log.debug(
         s"Verifying sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}, signature: $signature, pubKey: ${Utils.bytesToHex(pubKey.getAbyte)}"
       )
 
@@ -82,13 +82,13 @@ case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider:
       if (vrf.verify(Base64.getUrlDecoder.decode(signature.replace('+', '-').replace('/', '_')))) {
         true
       } else {
-        Log.warn(
+        log.warn(
           s"Signature invalid for sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}, signature: $signature"
         )
         !isRequired
       }
     }) getOrElse {
-      Log.warn(
+      log.warn(
         s"Unauthenticated sbus request: ${context.routingKey}, caller ${context.get(
           Headers.Origin
         )}, ip ${context.ip}, message ${context.messageId}, signature: ${context.get(Headers.Signature)}"
@@ -112,21 +112,21 @@ case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider:
                 "*"
               )
             if (!authorized) {
-              Log.warn(
+              log.warn(
                 s"Unauthorised sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}"
               )
             }
             authorized || !isRequired
           }
           .getOrElse {
-            Log.warn(
+            log.warn(
               s"No action defined for sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}"
             )
             !isRequired
           }
       }
     }) getOrElse {
-      Log.warn(
+      log.warn(
         s"Unauthenticated sbus request: ${context.routingKey}, caller ${context.get(Headers.Origin)}, ip ${context.ip}, message ${context.messageId}"
       )
       !isRequired
