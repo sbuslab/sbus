@@ -14,13 +14,14 @@ import net.i2p.crypto.eddsa.{EdDSAEngine, EdDSAPrivateKey, EdDSAPublicKey, Utils
 import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveTable, EdDSAPrivateKeySpec, EdDSAPublicKeySpec}
 import org.slf4j.LoggerFactory
 
-import com.sbuslab.model.InternalServerError
+import com.sbuslab.model.{ForbiddenError, InternalServerError}
 import com.sbuslab.sbus.{Context, Headers}
+
 
 trait AuthProvider {
   def sign(context: Context, body: Array[Byte]): Context
-  def verify(context: Context, body: Array[Byte]): Boolean
-  def authorize(context: Context): Boolean
+  def verify(context: Context, body: Array[Byte]): Try[Unit]
+  def authorize(context: Context): Try[Unit]
 }
 
 case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider: DynamicAuthConfigProvider)
@@ -54,6 +55,9 @@ case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider:
     owner → Identity(obj.atPath("/").getStringList("/").asScala.toSet)
   }
 
+  private val success = Success({})
+
+
   override def sign(context: Context, body: Array[Byte]): Context = {
     val signer = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
     signer.initSign(privKey)
@@ -66,73 +70,55 @@ case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider:
       .withValue(Headers.Signature, Base64.getUrlEncoder.encodeToString(signer.sign()))
   }
 
-  override def verify(context: Context, body: Array[Byte]): Boolean =
+  override def verify(context: Context, body: Array[Byte]): Try[Unit] =
     (for {
-      caller    ← context.get(Headers.Origin)
-      signature ← context.get(Headers.Signature)
-      pubKey    ← getPublicKeys.get(caller)
+      caller     ← context.get(Headers.Origin)
+      signature  ← context.get(Headers.Signature)
+      pubKey     ← getPublicKeys.get(caller)
     } yield {
-      log.debug(
-        s"Verifying sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}, signature: $signature, pubKey: ${Utils.bytesToHex(pubKey.getAbyte)}"
-      )
-
       val vrf = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
       vrf.initVerify(pubKey)
-
       vrf.update(body)
       context.get(Headers.Timestamp) foreach { timestamp ⇒ vrf.update(timestamp.getBytes) }
 
-      if (vrf.verify(Base64.getUrlDecoder.decode(signature.replace('+', '-').replace('/', '_')))) {
-        true
-      } else {
-        log.warn(
-          s"Signature invalid for sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}, signature: $signature"
-        )
-        !isRequired
+      if (!vrf.verify(Base64.getUrlDecoder.decode(signature.replace('+', '-').replace('/', '_')))) {
+        return failure(s"Signature invalid for sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}, signature: $signature")
       }
+
+      success
     }) getOrElse {
-      log.warn(
-        s"Unauthenticated sbus request: ${context.routingKey}, caller ${context.get(
-          Headers.Origin
-        )}, ip ${context.ip}, message ${context.messageId}, signature: ${context.get(Headers.Signature)}"
-      )
-      !isRequired
+      failure(s"Unauthenticated sbus request: ${context.routingKey}, caller ${context.get(Headers.Origin)}, ip ${context.ip}, messageId ${context.messageId}")
     }
 
-  override def authorize(context: Context): Boolean =
+  override def authorize(context: Context): Try[Unit] =
     (for {
       caller     ← context.get(Headers.Origin)
       routingKey ← context.get(Headers.RoutingKey)
     } yield {
       if (caller == serviceName) {
-        true
-      } else {
-        val identity = getIdentities.getOrElse(caller, Identity(Set()))
-        getActions.get(routingKey).orElse(getActions.get("*"))
-          .map { action ⇒
-            val authorized =
-              identity.isMemberOfAny(action.permissions) || action.permissions.contains(caller) || action.permissions.contains(
-                "*"
-              )
-            if (!authorized) {
-              log.warn(
-                s"Unauthorised sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}"
-              )
-            }
-            authorized || !isRequired
+        return success
+      }
+
+      val actions = getActions
+
+      actions.get(routingKey).orElse(actions.get("*")) match {
+        case Some(action) ⇒
+          val identity = getIdentities.getOrElse(caller, Identity(Set()))
+
+          val authorized =
+            identity.isMemberOfAny(action.permissions) || action.permissions.contains(caller) || action.permissions.contains("*")
+
+          if (!authorized) {
+            failure(s"Unauthorised sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}")
+          } else {
+            success
           }
-          .getOrElse {
-            log.warn(
-              s"No action defined for sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}"
-            )
-            !isRequired
-          }
+
+        case _ ⇒
+          failure(s"No action defined for sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}")
       }
     }) getOrElse {
-      log.warn(
-        s"Unauthenticated sbus request: ${context.routingKey}, caller ${context.get(Headers.Origin)}, ip ${context.ip}, message ${context.messageId}"
-      )
-      !isRequired
+      failure(s"Unauthenticated sbus request: ${context.routingKey}, caller ${context.get(Headers.Origin)}, ip ${context.ip}, messageId ${context.messageId}")
     }
 
   private def getPublicKeys: Map[String, EdDSAPublicKey] =
@@ -146,10 +132,22 @@ case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider:
 
   private def isRequired: Boolean =
     localIsRequired || dynamicProvider.isRequired
+
+  private def failure(reason: String): Try[Unit] = {
+    log.warn(reason)
+
+    if (isRequired) {
+      Failure(new ForbiddenError(reason))
+    } else {
+      Success({})
+    }
+  }
 }
 
 class NoopAuthProvider extends AuthProvider {
-  override def sign(context: Context, body: Array[Byte]): Context   = context
-  override def verify(context: Context, body: Array[Byte]): Boolean = true
-  override def authorize(context: Context): Boolean                 = true
+  private val success = Success({})
+
+  override def sign(context: Context, body: Array[Byte]): Context = context
+  override def verify(context: Context, body: Array[Byte]): Try[Unit] = success
+  override def authorize(context: Context): Try[Unit] = success
 }

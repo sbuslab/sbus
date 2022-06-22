@@ -1,13 +1,16 @@
 package com.sbuslab.sbus
 
+import scala.language.postfixOps
+
 import java.security.MessageDigest
 import java.util.Base64
 import scala.collection.JavaConverters._
+import scala.util
+import scala.util.{Failure, Success, Try}
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 import net.i2p.crypto.eddsa.{EdDSAEngine, EdDSAPrivateKey, EdDSAPublicKey, KeyPairGenerator, Utils}
-import net.i2p.crypto.eddsa.spec.EdDSAPrivateKeySpec
 import org.junit.runner.RunWith
 import org.mockito.Mockito.when
 import org.scalatest.{AsyncWordSpec, Matchers}
@@ -121,7 +124,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
         timestamp.getBytes
       )
 
-      verified should equal(true)
+      verified shouldBe true
     }
 
     "verify messages with the right key pair" in {
@@ -139,7 +142,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val verified = test.underTest.verify(signed, body)
 
-      verified should equal(true)
+      verified shouldBe a [Success[Unit]]
     }
 
     "not verify messages with the wrong key pair with required true" in {
@@ -158,7 +161,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val verified = test.underTest.verify(signed, body)
 
-      verified should equal(false)
+      verified shouldBe a [Failure[Unit]]
     }
 
     "verify messages with the wrong key pair with required false" in {
@@ -178,7 +181,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val verified = test.underTest.verify(signed, body)
 
-      verified should equal(true)
+      verified shouldBe a [Success[Unit]]
     }
 
     "not verify messages with no key pair with required true" in {
@@ -197,7 +200,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val verified = test.underTest.verify(signed, body)
 
-      verified should equal(false)
+      verified shouldBe a [Failure[Unit]]
     }
 
     "verify messages with no key pair with required false" in {
@@ -217,7 +220,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val verified = test.underTest.verify(signed, body)
 
-      verified should equal(true)
+      verified shouldBe a [Success[Unit]]
     }
 
     "not verify messages with no origin with required true" in {
@@ -235,7 +238,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val verified = test.underTest.verify(signed, body)
 
-      verified should equal(false)
+      verified shouldBe a [Failure[Unit]]
     }
 
     "verify messages with no origin with required false" in {
@@ -254,7 +257,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val verified = test.underTest.verify(signed, body)
 
-      verified should equal(true)
+      verified shouldBe a [Success[Unit]]
     }
 
     "not verify messages with no signature with required true" in {
@@ -268,7 +271,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val verified = test.underTest.verify(context, body)
 
-      verified should equal(false)
+      verified shouldBe a [Failure[Unit]]
     }
 
     "verify messages with no signature with required false" in {
@@ -283,7 +286,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val verified = test.underTest.verify(context, body)
 
-      verified should equal(true)
+      verified shouldBe a [Success[Unit]]
     }
 
     "verify messages with no signature with required false by dynamic is true" in {
@@ -298,7 +301,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val verified = test.underTest.verify(context, body)
 
-      verified should equal(false)
+      verified shouldBe a [Failure[Unit]]
     }
 
     "authorize messages when origin is self" in {
@@ -313,7 +316,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val authorized = test.underTest.authorize(context)
 
-      authorized should equal(true)
+      authorized shouldBe a [Success[Unit]]
     }
 
     "authorize messages when origin is authorized by being a memberOf  by specific action" in {
@@ -328,7 +331,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val authorized = test.underTest.authorize(context)
 
-      authorized should equal(true)
+      authorized shouldBe a [Success[Unit]]
     }
 
     "authorize messages when origin is authorized directly by specific action" in {
@@ -343,7 +346,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val authorized = test.underTest.authorize(context)
 
-      authorized should equal(true)
+      authorized shouldBe a [Success[Unit]]
     }
 
     "authorize messages when origin is authorized by action by wildcard" in {
@@ -358,7 +361,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val authorized = test.underTest.authorize(context)
 
-      authorized should equal(true)
+      authorized shouldBe a [Success[Unit]]
     }
 
     "authorize messages when unknown origin is authorized by action by wildcard" in {
@@ -373,7 +376,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val authorized = test.underTest.authorize(context)
 
-      authorized should equal(true)
+      authorized shouldBe a [Success[Unit]]
     }
 
     "authorize messages when origin is authorized by wildcard for action and permission" in {
@@ -388,7 +391,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val authorized = test.underTest.authorize(context)
 
-      authorized should equal(true)
+      authorized shouldBe a [Success[Unit]]
     }
 
     "deny messages when origin is not authorized by specific action" in {
@@ -403,7 +406,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val authorized = test.underTest.authorize(context)
 
-      authorized should equal(false)
+      authorized shouldBe a [Failure[Unit]]
     }
 
     "authorize messages when origin is authorized by dynamic provider with a new action" in {
@@ -418,7 +421,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val authorized = test.underTest.authorize(context)
 
-      authorized should equal(true)
+      authorized shouldBe a [Success[Unit]]
     }
 
     "authorize messages when origin is authorized by dynamic provider with a new identity" in {
@@ -433,7 +436,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val authorized = test.underTest.authorize(context)
 
-      authorized should equal(true)
+      authorized shouldBe a [Success[Unit]]
     }
 
     "authorize messages when origin is not authorized by specific action when required is off" in {
@@ -449,7 +452,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val authorized = test.underTest.authorize(context)
 
-      authorized should equal(true)
+      authorized shouldBe a [Success[Unit]]
     }
 
     "deny messages when origin is not authorized by specific action when required is dynamically on" in {
@@ -465,7 +468,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val authorized = test.underTest.authorize(context)
 
-      authorized should equal(false)
+      authorized shouldBe a [Failure[Unit]]
     }
 
     "verifies javascript generated signatures" in {
@@ -482,7 +485,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val verified = test.underTest.verify(context, body)
 
-      verified should equal(true)
+      verified shouldBe a [Success[Unit]]
     }
 
     "verifies cli generated signatures" in {
@@ -500,7 +503,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       val verified = test.underTest.verify(context, body)
 
-      verified should equal(true)
+      verified shouldBe a [Success[Unit]]
     }
   }
 }
