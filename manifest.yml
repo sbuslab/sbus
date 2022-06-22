@@ -1,6 +1,6 @@
 info:
   name: sbuslab-sbus
-  version: "1.4"
+  version: "1.5"
 
 include:
   - file: /etc/serve/include.d/library.yml
