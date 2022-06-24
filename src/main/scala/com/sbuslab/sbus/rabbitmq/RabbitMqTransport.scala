@@ -21,6 +21,10 @@ import com.rabbitmq.client.impl.recovery.TopologyRecoveryRetryHandlerBuilder
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.Logger
 import org.slf4j.{LoggerFactory, MDC}
+import javax.net.ssl.TrustManagerFactory
+import java.io.FileInputStream
+import java.security.KeyStore
+import javax.net.ssl.SSLContext
 
 import com.sbuslab.model._
 import com.sbuslab.model.scheduler.ScheduleCommand
@@ -59,6 +63,18 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       cf.setUsername(conf.getString("username"))
       cf.setPassword(conf.getString("password"))
       cf.setTopologyRecoveryEnabled(true)
+
+      val trustPassphrase = "changeit".toCharArray
+      val tks = KeyStore.getInstance("JKS")
+      tks.load(new FileInputStream("/usr/lib/jvm/java-17-amazon-corretto/lib/security/cacerts"), trustPassphrase)
+
+      val tmf = TrustManagerFactory.getInstance("SunX509")
+      tmf.init(tks)
+
+      val sslContext = SSLContext.getInstance("TLSv1.2")
+      sslContext.init(null, tmf.getTrustManagers, null)
+
+      cf.useSslProtocol(sslContext)
 
       cf.setTopologyRecoveryRetryHandler(TopologyRecoveryRetryHandlerBuilder.builder()
         .bindingRecoveryRetryCondition((_, _) ⇒ true)
