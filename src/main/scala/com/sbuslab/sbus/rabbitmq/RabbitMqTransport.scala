@@ -168,12 +168,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
     val corrId = Option(context.correlationId).getOrElse(UUID.randomUUID().toString)
     val time   = System.currentTimeMillis()
 
-    implicit val ctx = authProvider.sign(context.withValue(Headers.Timestamp, time.toString), msg match {
-      case sch: ScheduleCommand ⇒
-        jsonWriter.writeValueAsBytes(new Message(sch.getRoutingKey, sch.getBody))
-
-      case _ ⇒ bytes
-    })
+    implicit val ctx: Context = authProvider.sign(context.withValue(Headers.Timestamp, time.toString), bytes)
 
     val propsBldr = new BasicProperties().builder()
       .deliveryMode(if (responseClass != null) 1 else 2) // 2 → persistent
