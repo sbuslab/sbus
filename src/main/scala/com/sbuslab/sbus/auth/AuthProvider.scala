@@ -82,7 +82,7 @@ case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider:
       context.get(Headers.Timestamp) foreach { timestamp ⇒ vrf.update(timestamp.getBytes) }
 
       if (!vrf.verify(Base64.getUrlDecoder.decode(signature.replace('+', '-').replace('/', '_')))) {
-        return failure(s"Signature invalid for sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}, signature: $signature")
+        return failure(s"Signature invalid for sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}, signature: $signature, timestamp ${context.get(Headers.Timestamp)}")
       }
 
       success
