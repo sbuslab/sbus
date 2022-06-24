@@ -14,7 +14,7 @@ import com.sbuslab.model.InternalServerError
 import com.sbuslab.sbus.auth.{Action, DynamicAuthConfigProvider, Identity}
 
 
-case class ConsulAuthConfigProvider(
+class ConsulAuthConfigProvider(
   conf: Config,
   mapper: ObjectMapper) extends DynamicAuthConfigProvider {
 

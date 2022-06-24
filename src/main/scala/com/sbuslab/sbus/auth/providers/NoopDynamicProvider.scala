@@ -4,7 +4,7 @@ import net.i2p.crypto.eddsa.EdDSAPublicKey
 
 import com.sbuslab.sbus.auth.{Action, DynamicAuthConfigProvider, Identity}
 
-case class NoopDynamicProvider() extends DynamicAuthConfigProvider {
+class NoopDynamicProvider() extends DynamicAuthConfigProvider {
   override def getPublicKeys: Map[String, EdDSAPublicKey] = Map.empty
 
   override def getActions: Map[String, Action] = Map.empty

@@ -55,7 +55,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
     val keyPair  = new KeyPairGenerator().generateKeyPair
     val keyPair2 = new KeyPairGenerator().generateKeyPair
 
-    val underTest = AuthProviderImpl(
+    val underTest = new AuthProviderImpl(
       ConfigFactory
         .parseString(config)
         .withValue("required", ConfigValueFactory.fromAnyRef(required))
@@ -125,6 +125,26 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       )
 
       verified shouldBe true
+    }
+
+    "sign and verify messages" in {
+      val test = TestSuite()
+
+      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
+
+      val body      = "{}".getBytes
+      val timestamp = System.currentTimeMillis().toString
+      val context   = Context.empty
+        .withValue(Headers.Timestamp, timestamp)
+
+      val result = test.underTest.sign(context, body)
+
+      result.get(Headers.Origin).get should equal(test.underTest.serviceName)
+      result.get(Headers.Signature) should not be null
+
+      val verified = test.underTest.verify(result, body)
+
+      verified shouldBe a [Success[Unit]]
     }
 
     "verify messages with the right key pair" in {

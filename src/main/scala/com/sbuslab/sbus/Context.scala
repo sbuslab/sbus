@@ -7,7 +7,6 @@ import scala.concurrent.duration.{Duration, TimeUnit}
 import akka.util.Timeout
 import com.github.sstone.amqp.Amqp
 
-
 case class Context(data: Map[String, String] = Map.empty) {
 
   def get(key: String): Option[String] = data.get(key)
@@ -44,7 +43,6 @@ case class Context(data: Map[String, String] = Map.empty) {
   def customData = data -- Context.notLoggedHeaders
 }
 
-
 object Context {
 
   private val emptyContext = Context()
@@ -65,21 +63,22 @@ object Context {
     Headers.Signature,
   )
 
-  private val notLoggedHeaders = allowedHeaders -- Set(Headers.Ip, Headers.UserId, Headers.Auth)
+  private val notLoggedHeaders =
+    allowedHeaders -- Set(Headers.Ip, Headers.UserId, Headers.Auth, Headers.Timestamp, Headers.Origin, Headers.Signature)
 
-  def empty = emptyContext
-  def withNewCorrelationId() = emptyContext.withNewCorrelationId()
+  def empty                         = emptyContext
+  def withNewCorrelationId()        = emptyContext.withNewCorrelationId()
   def withCorrelationId(id: String) = Context().withCorrelationId(id)
 
-  def withTimeout(to: Timeout): Context = Context().withTimeout(to)
+  def withTimeout(to: Timeout): Context                 = Context().withTimeout(to)
   def withTimeout(value: Long, unit: TimeUnit): Context = Context().withTimeout(value, unit)
-  def withTimeout(millis: Long): Context = Context().withTimeout(millis)
+  def withTimeout(millis: Long): Context                = Context().withTimeout(millis)
 
   def withRetries(max: Int) = Context().withRetries(max)
 
   def from(delivery: Amqp.Delivery): Context = {
     val data = Map.newBuilder[String, String]
-    data += Headers.MessageId → Option(delivery.properties.getMessageId).getOrElse(UUID.randomUUID().toString)
+    data += Headers.MessageId  → Option(delivery.properties.getMessageId).getOrElse(UUID.randomUUID().toString)
     data += Headers.RoutingKey → delivery.envelope.getRoutingKey
 
     val headers = delivery.properties.getHeaders

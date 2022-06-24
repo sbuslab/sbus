@@ -24,7 +24,7 @@ trait AuthProvider {
   def authorize(context: Context): Try[Unit]
 }
 
-case class AuthProviderImpl(conf: Config, mapper: ObjectMapper, dynamicProvider: DynamicAuthConfigProvider)
+class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicProvider: DynamicAuthConfigProvider)
     extends AuthProvider {
 
   val log = Logger(LoggerFactory.getLogger("sbus.auth"))

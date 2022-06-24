@@ -40,7 +40,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
 
   case class TestSuite(config: String = defaultConfig) {
 
-    val underTest = ConsulAuthConfigProvider(
+    val underTest = new ConsulAuthConfigProvider(
       ConfigFactory
         .parseString(config)
         .resolve(),
