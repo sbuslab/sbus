@@ -12,7 +12,7 @@ import com.typesafe.config.Config
 import com.typesafe.scalalogging.Logger
 import net.i2p.crypto.eddsa.{EdDSAEngine, EdDSAPrivateKey, EdDSAPublicKey, Utils}
 import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveTable, EdDSAPrivateKeySpec, EdDSAPublicKeySpec}
-import org.slf4j.LoggerFactory
+import org.slf4j.{LoggerFactory}
 
 import com.sbuslab.model.{ForbiddenError, InternalServerError}
 import com.sbuslab.sbus.{Context, Headers}
@@ -65,9 +65,9 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
 
     val signature = Base64.getUrlEncoder.encodeToString(signer.sign())
 
-    log.info(s"Signing sbus message request: : ${context.routingKey}, caller $serviceName, ip ${context.ip}, message ${context.messageId}, signature: $signature, timestamp ${context.get(
+    log.debug(s"Signing sbus message request: : ${context.routingKey}, caller $serviceName, ip ${context.ip}, message ${context.messageId}, signature: $signature, timestamp ${context.get(
       Headers.Timestamp
-      )}, body ${new String(body)}")
+    )}, body ${new String(body)}")
 
     context
       .withValue(Headers.Origin, serviceName)
