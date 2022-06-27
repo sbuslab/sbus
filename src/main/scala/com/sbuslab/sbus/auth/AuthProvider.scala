@@ -83,7 +83,7 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
         return failure(
           s"Signature invalid for sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}, signature: $signature, timestamp ${context.get(
             Headers.Timestamp
-          )}, publicKey: ${Utils.bytesToHex(pubKey.getAbyte)}"
+          )}, publicKey: ${Utils.bytesToHex(pubKey.getAbyte)}, body ${new String(body)}"
         )
       }
 
