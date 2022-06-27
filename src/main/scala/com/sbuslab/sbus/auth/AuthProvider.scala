@@ -12,7 +12,7 @@ import com.typesafe.config.Config
 import com.typesafe.scalalogging.Logger
 import net.i2p.crypto.eddsa.{EdDSAEngine, EdDSAPrivateKey, EdDSAPublicKey, Utils}
 import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveTable, EdDSAPrivateKeySpec, EdDSAPublicKeySpec}
-import org.slf4j.{LoggerFactory}
+import org.slf4j.LoggerFactory
 
 import com.sbuslab.model.{ForbiddenError, InternalServerError}
 import com.sbuslab.sbus.{Context, Headers}

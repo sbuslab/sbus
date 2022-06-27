@@ -1,32 +1,30 @@
 package com.sbuslab.sbus.rabbitmq
 
+import java.io.FileInputStream
+import java.security.KeyStore
 import java.util
 import java.util.UUID
 import java.util.concurrent._
 import scala.collection.JavaConverters._
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
-import scala.util.{Failure, Success}
 
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.event.LoggingReceive
-import akka.pattern.{AskTimeoutException, CircuitBreaker, CircuitBreakerOpenException, ask}
+import akka.pattern.{ask, AskTimeoutException, CircuitBreaker, CircuitBreakerOpenException}
 import akka.util.Timeout
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import com.github.sstone.amqp._
-import com.rabbitmq.client.{RpcClient => _, RpcServer => _, _}
+import com.rabbitmq.client.{RpcClient ⇒ _, RpcServer ⇒ _, _}
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.impl.recovery.TopologyRecoveryRetryHandlerBuilder
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.Logger
-import org.slf4j.{LoggerFactory, MDC}
 import javax.net.ssl.{SSLContext, TrustManagerFactory}
-import java.io.FileInputStream
-import java.security.KeyStore
+import org.slf4j.{LoggerFactory, MDC}
 
 import com.sbuslab.model._
-import com.sbuslab.model.scheduler.ScheduleCommand
 import com.sbuslab.sbus.{Context, Headers, Transport}
 import com.sbuslab.sbus.auth.AuthProvider
 
@@ -64,10 +62,12 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       cf.setTopologyRecoveryEnabled(true)
 
       if (conf.getBoolean("ssl.enabled")) {
-        val certsPaths = conf.getString("ssl.truststore.certs-path")
-        val trustPassphrase = conf.getString("ssl.truststore.password").toCharArray
         val tks = KeyStore.getInstance("JKS")
-        tks.load(new FileInputStream(certsPaths), trustPassphrase)
+
+        tks.load(new FileInputStream(
+          conf.getString("ssl.truststore.certs-path")),
+          conf.getString("ssl.truststore.password").toCharArray
+        )
 
         val tmf = TrustManagerFactory.getInstance("SunX509")
         tmf.init(tks)
