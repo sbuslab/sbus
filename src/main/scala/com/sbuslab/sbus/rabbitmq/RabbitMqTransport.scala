@@ -10,21 +10,20 @@ import scala.util.{Failure, Success}
 
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.event.LoggingReceive
-import akka.pattern.{ask, AskTimeoutException, CircuitBreaker, CircuitBreakerOpenException}
+import akka.pattern.{AskTimeoutException, CircuitBreaker, CircuitBreakerOpenException, ask}
 import akka.util.Timeout
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import com.github.sstone.amqp._
-import com.rabbitmq.client.{RpcClient ⇒ _, RpcServer ⇒ _, _}
+import com.rabbitmq.client.{RpcClient => _, RpcServer => _, _}
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.impl.recovery.TopologyRecoveryRetryHandlerBuilder
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.Logger
 import org.slf4j.{LoggerFactory, MDC}
-import javax.net.ssl.TrustManagerFactory
+import javax.net.ssl.{SSLContext, TrustManagerFactory}
 import java.io.FileInputStream
 import java.security.KeyStore
-import javax.net.ssl.SSLContext
 
 import com.sbuslab.model._
 import com.sbuslab.model.scheduler.ScheduleCommand
