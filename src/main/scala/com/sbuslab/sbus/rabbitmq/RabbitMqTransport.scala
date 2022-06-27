@@ -64,17 +64,20 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       cf.setPassword(conf.getString("password"))
       cf.setTopologyRecoveryEnabled(true)
 
-      val trustPassphrase = "changeit".toCharArray
-      val tks = KeyStore.getInstance("JKS")
-      tks.load(new FileInputStream("/usr/lib/jvm/java-17-amazon-corretto/lib/security/cacerts"), trustPassphrase)
+      if (conf.getBoolean("ssl.enabled")) {
+        val certsPaths = conf.getString("ssl.truststore.certs-path")
+        val trustPassphrase = conf.getString("ssl.truststore.password").toCharArray
+        val tks = KeyStore.getInstance("JKS")
+        tks.load(new FileInputStream(certsPaths), trustPassphrase)
 
-      val tmf = TrustManagerFactory.getInstance("SunX509")
-      tmf.init(tks)
+        val tmf = TrustManagerFactory.getInstance("SunX509")
+        tmf.init(tks)
 
-      val sslContext = SSLContext.getInstance("TLSv1.2")
-      sslContext.init(null, tmf.getTrustManagers, null)
+        val sslContext = SSLContext.getInstance("TLSv1.2")
+        sslContext.init(null, tmf.getTrustManagers, null)
 
-      cf.useSslProtocol(sslContext)
+        cf.useSslProtocol(sslContext)
+      }
 
       cf.setTopologyRecoveryRetryHandler(TopologyRecoveryRetryHandlerBuilder.builder()
         .bindingRecoveryRetryCondition((_, _) ⇒ true)
