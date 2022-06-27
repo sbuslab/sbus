@@ -10,17 +10,20 @@ import scala.util.{Failure, Success}
 
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.event.LoggingReceive
-import akka.pattern.{ask, AskTimeoutException, CircuitBreaker, CircuitBreakerOpenException}
+import akka.pattern.{AskTimeoutException, CircuitBreaker, CircuitBreakerOpenException, ask}
 import akka.util.Timeout
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import com.github.sstone.amqp._
-import com.rabbitmq.client.{RpcClient ⇒ _, RpcServer ⇒ _, _}
+import com.rabbitmq.client.{RpcClient => _, RpcServer => _, _}
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.impl.recovery.TopologyRecoveryRetryHandlerBuilder
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.Logger
 import org.slf4j.{LoggerFactory, MDC}
+import javax.net.ssl.{SSLContext, TrustManagerFactory}
+import java.io.FileInputStream
+import java.security.KeyStore
 
 import com.sbuslab.model._
 import com.sbuslab.model.scheduler.ScheduleCommand
@@ -59,6 +62,21 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       cf.setUsername(conf.getString("username"))
       cf.setPassword(conf.getString("password"))
       cf.setTopologyRecoveryEnabled(true)
+
+      if (conf.getBoolean("ssl.enabled")) {
+        val certsPaths = conf.getString("ssl.truststore.certs-path")
+        val trustPassphrase = conf.getString("ssl.truststore.password").toCharArray
+        val tks = KeyStore.getInstance("JKS")
+        tks.load(new FileInputStream(certsPaths), trustPassphrase)
+
+        val tmf = TrustManagerFactory.getInstance("SunX509")
+        tmf.init(tks)
+
+        val sslContext = SSLContext.getInstance("TLSv1.2")
+        sslContext.init(null, tmf.getTrustManagers, null)
+
+        cf.useSslProtocol(sslContext)
+      }
 
       cf.setTopologyRecoveryRetryHandler(TopologyRecoveryRetryHandlerBuilder.builder()
         .bindingRecoveryRetryCondition((_, _) ⇒ true)
