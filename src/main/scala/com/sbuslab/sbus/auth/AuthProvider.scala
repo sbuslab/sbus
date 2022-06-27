@@ -63,9 +63,15 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
     signer.update(body)
     context.get(Headers.Timestamp) foreach { timestamp ⇒ signer.update(timestamp.getBytes) }
 
+    val signature = Base64.getUrlEncoder.encodeToString(signer.sign())
+
+    log.info(s"Signing sbus message request: : ${context.routingKey}, caller $serviceName, ip ${context.ip}, message ${context.messageId}, signature: $signature, timestamp ${context.get(
+      Headers.Timestamp
+      )}, body ${new String(body)}")
+
     context
       .withValue(Headers.Origin, serviceName)
-      .withValue(Headers.Signature, Base64.getUrlEncoder.encodeToString(signer.sign()))
+      .withValue(Headers.Signature, signature)
   }
 
   override def verify(context: Context, body: Array[Byte]): Try[Unit] =
