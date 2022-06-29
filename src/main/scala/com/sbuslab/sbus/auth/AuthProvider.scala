@@ -19,9 +19,13 @@ import com.sbuslab.sbus.{Context, Headers}
 
 trait AuthProvider {
   def signMessageRequest(context: Context, body: Array[Byte]): Context
+
   def verifyMessageSignature(context: Context, body: Array[Byte]): Try[Unit]
+
   def signCommand(context: Context, cmd: Option[Any]): Context
+
   def verifyCommandSignature(context: Context, body: Option[Array[Byte]]): Try[Unit]
+
   def authorizeCommand(context: Context): Try[Unit]
 }
 
@@ -219,9 +223,13 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
 class NoopAuthProvider extends AuthProvider {
   private val success = Success {}
 
-  override def signMessageRequest(context: Context, body: Array[Byte]): Context              = context
-  override def verifyMessageSignature(context: Context, body: Array[Byte]): Try[Unit]        = success
-  override def authorizeCommand(context: Context): Try[Unit]                                 = success
-  override def signCommand(context: Context, cmd: Option[Any]): Context                      = context
+  override def signMessageRequest(context: Context, body: Array[Byte]): Context = context
+
+  override def verifyMessageSignature(context: Context, body: Array[Byte]): Try[Unit] = success
+
+  override def authorizeCommand(context: Context): Try[Unit] = success
+
+  override def signCommand(context: Context, cmd: Option[Any]): Context = context
+
   override def verifyCommandSignature(context: Context, cmd: Option[Array[Byte]]): Try[Unit] = success
 }

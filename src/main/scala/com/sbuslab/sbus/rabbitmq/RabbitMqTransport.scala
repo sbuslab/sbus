@@ -306,7 +306,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
             }).asInstanceOf[T]
 
             authProvider.verifyMessageSignature(context, delivery.body) flatMap { _ ⇒
-              authProvider.verifyCommandSignature(context, body.map(jsonWriter.writeValueAsBytes)) flatMap { _ ⇒
+              authProvider.verifyCommandSignature(context, body.map(mapper.writeValueAsBytes)) flatMap { _ ⇒
                 authProvider.authorizeCommand(context)
               }
             } recover { case e ⇒
