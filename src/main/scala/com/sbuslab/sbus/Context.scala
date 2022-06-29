@@ -64,7 +64,7 @@ object Context {
   )
 
   private val notLoggedHeaders =
-    allowedHeaders -- Set(Headers.Ip, Headers.UserId, Headers.Auth, Headers.Timestamp, Headers.Origin, Headers.Signature)
+    allowedHeaders -- Set(Headers.Ip, Headers.UserId, Headers.Auth, Headers.Origin)
 
   def empty                         = emptyContext
   def withNewCorrelationId()        = emptyContext.withNewCorrelationId()
