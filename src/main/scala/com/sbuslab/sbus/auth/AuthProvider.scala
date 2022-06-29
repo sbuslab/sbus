@@ -1,19 +1,16 @@
 package com.sbuslab.sbus.auth
 
 import scala.language.postfixOps
-
 import java.security.MessageDigest
 import java.util.Base64
 import scala.collection.JavaConverters._
 import scala.util.{Failure, Success, Try}
-
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.Logger
 import net.i2p.crypto.eddsa.{EdDSAEngine, EdDSAPrivateKey, EdDSAPublicKey, Utils}
-import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveTable, EdDSAPrivateKeySpec, EdDSAPublicKeySpec}
+import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveSpec, EdDSANamedCurveTable, EdDSAPrivateKeySpec, EdDSAPublicKeySpec}
 import org.slf4j.LoggerFactory
-
 import com.sbuslab.model.{ForbiddenError, InternalServerError}
 import com.sbuslab.sbus.{Context, Headers}
 
@@ -32,13 +29,13 @@ trait AuthProvider {
 class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicProvider: DynamicAuthConfigProvider)
     extends AuthProvider {
 
-  val log = Logger(LoggerFactory.getLogger("sbus.auth"))
+  val log: Logger = Logger(LoggerFactory.getLogger("sbus.auth"))
 
-  val spec = EdDSANamedCurveTable.getByName("Ed25519")
+  val spec: EdDSANamedCurveSpec = EdDSANamedCurveTable.getByName("Ed25519")
 
-  val serviceName = conf.getString("name")
+  val serviceName: String = conf.getString("name")
 
-  val localIsRequired = conf.getBoolean("required").booleanValue()
+  val localIsRequired: Boolean = conf.getBoolean("required").booleanValue()
 
   val privKey = new EdDSAPrivateKey(new EdDSAPrivateKeySpec(
     Utils.hexToBytes(
@@ -48,15 +45,15 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
     spec
   ))
 
-  val localPublicKeys = conf.getObject("public-keys").asScala map { case (owner, obj) ⇒
+  val localPublicKeys: Map[String, EdDSAPublicKey] = conf.getObject("public-keys").asScala map { case (owner, obj) ⇒
     owner → new EdDSAPublicKey(new EdDSAPublicKeySpec(Utils.hexToBytes(obj.atPath("/").getString("/")), spec))
   } toMap
 
-  val localActions = conf.getConfig("rbac").getObject("actions").asScala.toMap.map { case (action, obj) ⇒
+  val localActions: Map[String, Action] = conf.getConfig("rbac").getObject("actions").asScala.toMap.map { case (action, obj) ⇒
     action → Action(obj.atPath("/").getStringList("/").asScala.toSet)
   }
 
-  val localIdentities = conf.getConfig("rbac").getObject("identities").asScala.toMap.map { case (owner, obj) ⇒
+  val localIdentities: Map[String, Identity] = conf.getConfig("rbac").getObject("identities").asScala.toMap.map { case (owner, obj) ⇒
     owner → Identity(obj.atPath("/").getStringList("/").asScala.toSet)
   }
 
@@ -105,7 +102,7 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
       )
     }
 
-  override def authorizeCommand(context: Context) = {
+  override def authorizeCommand(context: Context): Try[Unit] = {
     (for {
       origin     ← context.get(Headers.Origin)
       routingKey ← context.get(Headers.RoutingKey)
@@ -143,7 +140,7 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
 
   }
 
-  override def verifyCommandSignature(context: Context, cmd: Option[Array[Byte]]) =
+  override def verifyCommandSignature(context: Context, cmd: Option[Array[Byte]]): Try[Unit] =
     (for {
       origin     ← context.get(Headers.Origin)
       signature  ← context.get(Headers.Signature)
@@ -170,7 +167,7 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
       )
     }
 
-  override def signCommand(context: Context, cmd: Option[Any]) = {
+  override def signCommand(context: Context, cmd: Option[Any]): Context = {
     if (context.get(Headers.ProxyPass).exists(_.toBoolean)) {
       context
     } else {
