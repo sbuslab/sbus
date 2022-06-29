@@ -16,4 +16,7 @@ object Headers {
   val Signature        = "signature"
   val UserId           = "userId"
   val Auth             = "auth"
+  val MessageOrigin    = "message-origin"
+  val MessageSignature = "message-signature"
+  val ProxyPass        = "proxy-pass"
 }

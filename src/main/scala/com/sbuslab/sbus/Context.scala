@@ -20,6 +20,8 @@ case class Context(data: Map[String, String] = Map.empty) {
   def timestamp: Option[Long] = get(Headers.Timestamp).map(_.toLong)
   def ip: String              = get(Headers.Ip).orNull
   def userAgent: String       = get(Headers.UserAgent).orNull
+  def signature: String       = get(Headers.Signature).orNull
+  def origin: String          = get(Headers.Origin).orNull
 
   def withValue(key: String, value: Any): Context =
     withValue(key, if (value != null) value.toString else null)
@@ -39,6 +41,9 @@ case class Context(data: Map[String, String] = Map.empty) {
   def withTimeout(millis: Long): Context                = withValue(Headers.Timeout, millis.toString)
   def withRetries(max: Int): Context                    = withValue(Headers.RetryAttemptsMax, max.toString)
   def withRoutingKey(key: String): Context              = withValue(Headers.RoutingKey, key)
+  def withSignature(signature: String): Context         = withValue(Headers.Signature, signature)
+  def withOrigin(origin: String): Context               = withValue(Headers.Origin, origin)
+  def withProxyPass: Context                            = withValue(Headers.ProxyPass, true)
 
   def customData = data -- Context.notLoggedHeaders
 }
@@ -61,6 +66,8 @@ object Context {
     Headers.UserAgent,
     Headers.Origin,
     Headers.Signature,
+    Headers.MessageOrigin,
+    Headers.MessageSignature,
   )
 
   private val notLoggedHeaders =

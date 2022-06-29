@@ -18,9 +18,11 @@ import com.sbuslab.model.{ForbiddenError, InternalServerError}
 import com.sbuslab.sbus.{Context, Headers}
 
 trait AuthProvider {
-  def sign(context: Context, body: Array[Byte]): Context
-  def verify(context: Context, body: Array[Byte]): Try[Unit]
-  def authorize(context: Context): Try[Unit]
+  def signMessageRequest(context: Context, body: Array[Byte]): Context
+  def verifyMessageSignature(context: Context, body: Array[Byte]): Try[Unit]
+  def signCommand(context: Context, cmd: Option[Any]): Context
+  def verifyCommandSignature(context: Context, body: Option[Array[Byte]]): Try[Unit]
+  def authorizeCommand(context: Context): Try[Unit]
 }
 
 class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicProvider: DynamicAuthConfigProvider)
@@ -56,84 +58,140 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
 
   private val success = Success {}
 
-  override def sign(context: Context, body: Array[Byte]): Context = {
-    val signer = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
-    signer.initSign(privKey)
+  override def signMessageRequest(context: Context, body: Array[Byte]): Context = {
+    val edDSAEngine = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
+    edDSAEngine.initSign(privKey)
 
-    signer.update(body)
-    context.get(Headers.Timestamp) foreach { timestamp ⇒ signer.update(timestamp.getBytes) }
+    edDSAEngine.update(body)
 
-    val signature = Base64.getUrlEncoder.encodeToString(signer.sign())
+    addMessageHeadersToEngine(context, edDSAEngine)
 
-    log.debug(s"Signing sbus message request: : ${context.routingKey}, caller $serviceName, ip ${context.ip}, message ${context.messageId}, signature: $signature, timestamp ${context.get(
-      Headers.Timestamp
-    )}, body ${new String(body)}")
+    val signature = Base64.getUrlEncoder.encodeToString(edDSAEngine.sign())
+
+    log.debug(s"Signing sbus message: ${context.routingKey}, origin: $serviceName")
 
     context
-      .withValue(Headers.Origin, serviceName)
-      .withValue(Headers.Signature, signature)
+      .withValue(Headers.MessageOrigin, serviceName)
+      .withValue(Headers.MessageSignature, signature)
   }
 
-  override def verify(context: Context, body: Array[Byte]): Try[Unit] =
+  override def verifyMessageSignature(context: Context, body: Array[Byte]): Try[Unit] =
     (for {
-      caller    ← context.get(Headers.Origin)
-      signature ← context.get(Headers.Signature)
-      pubKey    ← getPublicKeys.get(caller)
+      origin    ← context.get(Headers.MessageOrigin)
+      signature ← context.get(Headers.MessageSignature)
+      pubKey    ← getPublicKeys.get(origin)
     } yield {
-      val vrf = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
-      vrf.initVerify(pubKey)
-      vrf.update(body)
-      context.get(Headers.Timestamp) foreach { timestamp ⇒ vrf.update(timestamp.getBytes) }
+      val edDSAEngine = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
+      edDSAEngine.initVerify(pubKey)
 
-      if (!vrf.verify(Base64.getUrlDecoder.decode(signature.replace('+', '-').replace('/', '_')))) {
+      edDSAEngine.update(body)
+
+      addMessageHeadersToEngine(context, edDSAEngine)
+
+      if (!edDSAEngine.verify(Base64.getUrlDecoder.decode(signature.replace('+', '-').replace('/', '_')))) {
         return failure(
-          s"Signature invalid for sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}, signature: $signature, timestamp ${context.get(
-            Headers.Timestamp
-          )}, publicKey: ${Utils.bytesToHex(pubKey.getAbyte)}, body ${new String(body)}"
+          s"Signature invalid for sbus message: ${context.routingKey}, $origin"
         )
       }
 
       success
     }) getOrElse {
       failure(
-        s"Unauthenticated sbus request: ${context.routingKey}, caller ${context.get(Headers.Origin)}, ip ${context.ip}, messageId ${context.messageId}"
+        s"Unauthenticated sbus message: ${context.routingKey}, origin: ${context.get(Headers.MessageOrigin)}"
       )
     }
 
-  override def authorize(context: Context): Try[Unit] =
+  override def authorizeCommand(context: Context) = {
     (for {
-      caller     ← context.get(Headers.Origin)
+      origin     ← context.get(Headers.Origin)
       routingKey ← context.get(Headers.RoutingKey)
     } yield {
-      if (caller == serviceName) {
-        return success
+      if (origin == serviceName) {
+        success
+      } else {
+        val actions = getActions
+
+        actions.get(routingKey).orElse(actions.get("*")) match {
+          case Some(action) ⇒
+            val identity = getIdentities.getOrElse(origin, Identity(Set()))
+
+            val authorized =
+              identity.isMemberOfAny(action.permissions) || action.permissions.contains(origin) || action.permissions.contains("*")
+
+            if (!authorized) {
+              failure(s"Unauthorised sbus cmd: ${context.routingKey}, origin $origin")
+            } else {
+              success
+            }
+
+          case _ ⇒
+            failure(
+              s"No action defined for sbus cmd: ${context.routingKey}, origin $origin"
+            )
+        }
       }
 
-      val actions = getActions
+    }) getOrElse {
+      failure(
+        s"Unauthenticated sbus cmd: ${context.routingKey}, origin ${context.origin}"
+      )
+    }
 
-      actions.get(routingKey).orElse(actions.get("*")) match {
-        case Some(action) ⇒
-          val identity = getIdentities.getOrElse(caller, Identity(Set()))
+  }
 
-          val authorized =
-            identity.isMemberOfAny(action.permissions) || action.permissions.contains(caller) || action.permissions.contains("*")
+  override def verifyCommandSignature(context: Context, cmd: Option[Array[Byte]]) =
+    (for {
+      origin     ← context.get(Headers.Origin)
+      signature  ← context.get(Headers.Signature)
+      routingKey ← context.get(Headers.RoutingKey)
+      pubKey     ← getPublicKeys.get(origin)
+    } yield {
+      val edDSAEngine = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
+      edDSAEngine.initVerify(pubKey)
 
-          if (!authorized) {
-            failure(s"Unauthorised sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}")
-          } else {
-            success
-          }
+      cmd foreach edDSAEngine.update
+      edDSAEngine.update(routingKey.getBytes)
+      edDSAEngine.update(origin.getBytes)
 
-        case _ ⇒
-          failure(
-            s"No action defined for sbus request: ${context.routingKey}, caller $caller, ip ${context.ip}, message ${context.messageId}"
-          )
+      if (!edDSAEngine.verify(Base64.getUrlDecoder.decode(signature.replace('+', '-').replace('/', '_')))) {
+        failure(
+          s"Signature invalid for sbus cmd: ${context.routingKey}, origin: $origin"
+        )
+      } else {
+        success
       }
     }) getOrElse {
       failure(
-        s"Unauthenticated sbus request: ${context.routingKey}, caller ${context.get(Headers.Origin)}, ip ${context.ip}, messageId ${context.messageId}"
+        s"Unauthenticated sbus cmd: ${context.routingKey}, origin: ${context.origin}"
       )
     }
+
+  override def signCommand(context: Context, cmd: Option[Any]) = {
+    if (context.get(Headers.ProxyPass).exists(_.toBoolean)) {
+      context
+    } else {
+      val edDSAEngine = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
+      edDSAEngine.initSign(privKey)
+
+      cmd map mapper.writeValueAsBytes foreach edDSAEngine.update
+      context.get(Headers.RoutingKey) foreach { routingKey ⇒ edDSAEngine.update(routingKey.getBytes) }
+      edDSAEngine.update(serviceName.getBytes)
+
+      val signature = Base64.getUrlEncoder.encodeToString(edDSAEngine.sign())
+
+      log.debug(s"Signing sbus cmd: ${context.routingKey}, origin $serviceName")
+
+      context
+        .withValue(Headers.Origin, serviceName)
+        .withValue(Headers.Signature, signature)
+    }
+  }
+
+  private def addMessageHeadersToEngine(context: Context, edDSAEngine: EdDSAEngine): Unit = {
+    context.get(Headers.Timestamp) foreach { timestamp ⇒ edDSAEngine.update(timestamp.getBytes) }
+    context.get(Headers.RoutingKey) foreach { value ⇒ edDSAEngine.update(value.getBytes) }
+    context.get(Headers.CorrelationId) foreach { value ⇒ edDSAEngine.update(value.getBytes) }
+  }
 
   private def getPublicKeys: Map[String, EdDSAPublicKey] =
     localPublicKeys ++ dynamicProvider.getPublicKeys
@@ -161,7 +219,9 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
 class NoopAuthProvider extends AuthProvider {
   private val success = Success {}
 
-  override def sign(context: Context, body: Array[Byte]): Context     = context
-  override def verify(context: Context, body: Array[Byte]): Try[Unit] = success
-  override def authorize(context: Context): Try[Unit]                 = success
+  override def signMessageRequest(context: Context, body: Array[Byte]): Context              = context
+  override def verifyMessageSignature(context: Context, body: Array[Byte]): Try[Unit]        = success
+  override def authorizeCommand(context: Context): Try[Unit]                                 = success
+  override def signCommand(context: Context, cmd: Option[Any]): Context                      = context
+  override def verifyCommandSignature(context: Context, cmd: Option[Array[Byte]]): Try[Unit] = success
 }
