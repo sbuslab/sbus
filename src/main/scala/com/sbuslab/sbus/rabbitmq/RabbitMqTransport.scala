@@ -6,7 +6,7 @@ import java.util
 import java.util.UUID
 import java.util.concurrent._
 import scala.collection.JavaConverters._
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 import scala.concurrent.duration._
 
 import akka.actor.{ActorRef, ActorSystem, Props}
@@ -28,10 +28,9 @@ import com.sbuslab.model._
 import com.sbuslab.sbus.{Context, Headers, Transport}
 import com.sbuslab.sbus.auth.AuthProvider
 
-
 class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: ActorSystem, mapper: ObjectMapper) extends Transport {
 
-  implicit val ec = actorSystem.dispatcher
+  implicit val ec: ExecutionContextExecutor = actorSystem.dispatcher
 
   private val log = Logger(LoggerFactory.getLogger("sbus.rabbitmq"))
 
@@ -42,7 +41,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       mapper.writer()
     }
 
-  implicit val defaultTimeout = Timeout(conf.getDuration("default-timeout").toMillis, TimeUnit.MILLISECONDS)
+  implicit val defaultTimeout: Timeout = Timeout(conf.getDuration("default-timeout").toMillis, TimeUnit.MILLISECONDS)
 
   private val LogTrimLength         = conf.getInt("log-trim-length")
   private val UnloggedRequests      = conf.getStringList("unlogged-requests").asScala.toSet
@@ -53,50 +52,50 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
   private val rpcServers = new ConcurrentLinkedQueue[ActorRef]
 
   private val connection = actorSystem.actorOf(ConnectionOwner.props(
-    connFactory = {
-      log.debug("Sbus connecting to: " + conf.getString("host"))
+      connFactory       = {
+        log.debug("Sbus connecting to: " + conf.getString("host"))
 
-      val cf = new ConnectionFactory()
-      cf.setUsername(conf.getString("username"))
-      cf.setPassword(conf.getString("password"))
-      cf.setTopologyRecoveryEnabled(true)
+        val cf = new ConnectionFactory()
+        cf.setUsername(conf.getString("username"))
+        cf.setPassword(conf.getString("password"))
+        cf.setTopologyRecoveryEnabled(true)
 
-      if (conf.getBoolean("ssl.enabled")) {
-        val tks = KeyStore.getInstance("JKS")
+        if (conf.getBoolean("ssl.enabled")) {
+          val tks = KeyStore.getInstance("JKS")
 
         tks.load(new FileInputStream(
           conf.getString("ssl.truststore.certs-path")),
-          conf.getString("ssl.truststore.password").toCharArray
-        )
+            conf.getString("ssl.truststore.password").toCharArray
+          )
 
-        val tmf = TrustManagerFactory.getInstance("SunX509")
-        tmf.init(tks)
+          val tmf = TrustManagerFactory.getInstance("SunX509")
+          tmf.init(tks)
 
-        val sslContext = SSLContext.getInstance("TLSv1.2")
-        sslContext.init(null, tmf.getTrustManagers, null)
+          val sslContext = SSLContext.getInstance("TLSv1.2")
+          sslContext.init(null, tmf.getTrustManagers, null)
 
-        cf.useSslProtocol(sslContext)
-      }
+          cf.useSslProtocol(sslContext)
+        }
 
-      cf.setTopologyRecoveryRetryHandler(TopologyRecoveryRetryHandlerBuilder.builder()
-        .bindingRecoveryRetryCondition((_, _) ⇒ true)
-        .consumerRecoveryRetryCondition((_, _) ⇒ true)
-        .exchangeRecoveryRetryCondition((_, _) ⇒ true)
-        .queueRecoveryRetryCondition((_, _) ⇒ true)
-        .retryAttempts(Int.MaxValue)
-        .backoffPolicy(_ ⇒ Thread.sleep(100))
-        .build())
+        cf.setTopologyRecoveryRetryHandler(TopologyRecoveryRetryHandlerBuilder.builder()
+          .bindingRecoveryRetryCondition((_, _) ⇒ true)
+          .consumerRecoveryRetryCondition((_, _) ⇒ true)
+          .exchangeRecoveryRetryCondition((_, _) ⇒ true)
+          .queueRecoveryRetryCondition((_, _) ⇒ true)
+          .retryAttempts(Int.MaxValue)
+          .backoffPolicy(_ ⇒ Thread.sleep(100))
+          .build())
 
-      cf.setAutomaticRecoveryEnabled(true)
-      cf.setNetworkRecoveryInterval(5000)
-      cf.setRequestedHeartbeat(10)
-      cf.setConnectionTimeout(5000)
-      cf
-    },
-    reconnectionDelay = 3.seconds,
-    addressResolver = Some(new ListAddressResolver(
-      conf.getString("host").split(',').map(host ⇒ new Address(host, conf.getInt("port"))).toList.asJava
-    ))
+        cf.setAutomaticRecoveryEnabled(true)
+        cf.setNetworkRecoveryInterval(5000)
+        cf.setRequestedHeartbeat(10)
+        cf.setConnectionTimeout(5000)
+        cf
+      },
+      reconnectionDelay = 3.seconds,
+      addressResolver   = Some(new ListAddressResolver(
+        conf.getString("host").split(',').map(host ⇒ new Address(host, conf.getInt("port"))).toList.asJava
+      ))
   ), name = "rabbitmq-connection")
 
   private val channelConfigs: Map[String, SbusChannel] = {
@@ -110,13 +109,13 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       val retryExchange = Amqp.ExchangeParameters(exchange.name + "-retries", passive = false, exchangeType = "fanout")
 
       Await.ready(for {
-        _ ← producer ? Amqp.DeclareExchange(exchange) zip
+          _ ← producer ? Amqp.DeclareExchange(exchange) zip
             producer ? Amqp.DeclareExchange(retryExchange)
 
-        _ ← producer ? Amqp.DeclareQueue(
+          _ ← producer ? Amqp.DeclareQueue(
             Amqp.QueueParameters(retryExchange.name, passive = false, durable = true, exclusive = false, autodelete = false, args = Map("x-dead-letter-exchange" → exchange.name)))
 
-        _ ← producer ? Amqp.QueueBind(retryExchange.name, retryExchange.name, Set("#"))
+          _ ← producer ? Amqp.QueueBind(retryExchange.name, retryExchange.name, Set("#"))
       } yield {}, 120.seconds)
 
       name → SbusChannel(
@@ -142,16 +141,16 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
     child
   }
 
-  private val breakers = new ConcurrentHashMap[String, CircuitBreaker]()
+  private val breakers              = new ConcurrentHashMap[String, CircuitBreaker]()
   private val circuitBreakerEnabled = conf.getBoolean("circuit-breaker.enabled")
 
   private def circuitBreaker[T](routingKey: String)(f: ⇒ Future[T]): Future[T] =
     if (circuitBreakerEnabled) {
       breakers.computeIfAbsent(routingKey, _ ⇒ {
-        new CircuitBreaker(
-          scheduler    = actorSystem.scheduler,
-          maxFailures  = conf.getInt("circuit-breaker.max-failures"),
-          callTimeout  = Duration.Zero,
+          new CircuitBreaker(
+            scheduler    = actorSystem.scheduler,
+            maxFailures  = conf.getInt("circuit-breaker.max-failures"),
+            callTimeout  = Duration.Zero,
           resetTimeout = conf.getDuration("circuit-breaker.reset-timeout").toMillis.millis)
       }).withCircuitBreaker(f)
     } else f
@@ -179,14 +178,19 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
    *
    */
   def send(routingKey: String, msg: Any, context: Context, responseClass: Class[_]): Future[Any] = {
-    val channel = getChannel(routingKey)
+    val channel        = getChannel(routingKey)
     val realRoutingKey = routingKey.split(':').last // remove channel name prefix, if exists
 
     val bytes  = jsonWriter.writeValueAsBytes(new Message(realRoutingKey, msg))
     val corrId = Option(context.correlationId).getOrElse(UUID.randomUUID().toString)
     val time   = System.currentTimeMillis()
 
-    implicit val ctx: Context = authProvider.sign(context.withValue(Headers.Timestamp, time.toString), bytes)
+    implicit val ctx: Context = authProvider.signMessageRequest(
+      authProvider.signCommand(context.withValue(Headers.Timestamp, time.toString)
+          .withCorrelationId(corrId)
+          .withRoutingKey(realRoutingKey), Option(msg)),
+      bytes
+    )
 
     val propsBldr = new BasicProperties().builder()
       .deliveryMode(if (responseClass != null) 1 else 2) // 2 → persistent
@@ -197,17 +201,20 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
         case _                          ⇒ null
       })
       .headers(Map(
-        Headers.CorrelationId    → corrId,
-        Headers.RoutingKey       → realRoutingKey,
-        Headers.RetryAttemptsMax → ctx.maxRetries.getOrElse(if (responseClass != null) null else DefaultCommandRetries), // commands retryable by default
+        Headers.CorrelationId    → ctx.correlationId,
+        Headers.RoutingKey       → ctx.routingKey,
+        // commands retryable by default
+        Headers.RetryAttemptsMax → ctx.maxRetries.getOrElse(if (responseClass != null) null else DefaultCommandRetries),
         Headers.ExpiredAt        → ctx.timeout.map(_ + time).getOrElse(null),
-        Headers.Timestamp        → time,
+        Headers.Timestamp        → ctx.get(Headers.Timestamp).orNull,
         Headers.Ip               → ctx.ip,
         Headers.UserAgent        → ctx.userAgent,
-        Headers.Origin           → ctx.get(Headers.Origin).orNull,
         Headers.UserId           → ctx.get(Headers.UserId).orNull,
         Headers.Auth             → ctx.get(Headers.Auth).orNull,
+        Headers.Origin           → ctx.get(Headers.Origin).orNull,
         Headers.Signature        → ctx.get(Headers.Signature).orNull,
+        Headers.MessageOrigin    → ctx.get(Headers.MessageOrigin).orNull,
+        Headers.MessageSignature → ctx.get(Headers.MessageSignature).orNull
       ).filter(_._2 != null).mapValues(_.toString.asInstanceOf[Object]).asJava)
 
     if (corrId != "sbus:ping") {
@@ -217,38 +224,38 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
     val pub = Amqp.Publish(channel.exchange, realRoutingKey, bytes, Some(propsBldr.build()), mandatory = channel.mandatory)
 
     (if (responseClass != null) {
-      circuitBreaker(realRoutingKey) {
-        rpcClient.ask(RpcClient.Request(pub))(ctx.timeout.fold(defaultTimeout)(_.millis)) map {
-          case RpcClient.Response(deliveries) ⇒
-            logs("resp <~~~", realRoutingKey, deliveries.head.body, corrId)
+       circuitBreaker(realRoutingKey) {
+         rpcClient.ask(RpcClient.Request(pub))(ctx.timeout.fold(defaultTimeout)(_.millis)) map {
+           case RpcClient.Response(deliveries) ⇒
+             logs("resp <~~~", realRoutingKey, deliveries.head.body, corrId)
 
-            val tree = mapper.readTree(deliveries.head.body)
+             val tree = mapper.readTree(deliveries.head.body)
 
-            val status =
-              if (tree.hasNonNull("status")) {
-                tree.path("status").asInt
-              } else if (tree.path("failed").asBoolean(false)) { // backward compatibility with old protocol
-                500
-              } else { 200 }
+             val status =
+               if (tree.hasNonNull("status")) {
+                 tree.path("status").asInt
+               } else if (tree.path("failed").asBoolean(false)) { // backward compatibility with old protocol
+                 500
+               } else { 200 }
 
-            if (status < 400) {
-              deserializeToClass(tree.path("body"), responseClass)
-            } else {
-              val err = mapper.treeToValue(tree.path("body"), classOf[ErrorResponseBody])
-              throw ErrorMessage.fromCode(status, err.getMessage, null, err.getError, err.getLinks, err.getEmbedded)
-            }
+             if (status < 400) {
+               deserializeToClass(tree.path("body"), responseClass)
+             } else {
+               val err = mapper.treeToValue(tree.path("body"), classOf[ErrorResponseBody])
+               throw ErrorMessage.fromCode(status, err.getMessage, null, err.getError, err.getLinks, err.getEmbedded)
+             }
 
-          case other ⇒
-            log.error(s"Unexpected response for `$realRoutingKey`: $other")
-            throw new InternalServerError(s"Unexpected response for `$realRoutingKey`")
-        }
-      }
-    } else {
-      channel.producer ? pub map {
-        case _: Amqp.Ok ⇒ // ok
-        case error ⇒ throw new InternalServerError("Error on publish message to " + realRoutingKey + ": " + error)
-      }
-    }) recover {
+           case other ⇒
+             log.error(s"Unexpected response for `$realRoutingKey`: $other")
+             throw new InternalServerError(s"Unexpected response for `$realRoutingKey`")
+         }
+       }
+     } else {
+       channel.producer ? pub map {
+         case _: Amqp.Ok ⇒ // ok
+         case error      ⇒ throw new InternalServerError("Error on publish message to " + realRoutingKey + ": " + error)
+       }
+     }) recover {
       case e: AskTimeoutException ⇒
         logs("timeout error", realRoutingKey, bytes, corrId, e)
         throw new ErrorMessage(504, s"Timeout on `$realRoutingKey` with message ${if (msg != null) msg.getClass.getSimpleName else null}", e)
@@ -275,12 +282,12 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       return
     }
 
-    val channel = getChannel(routingKey)
+    val channel          = getChannel(routingKey)
     val subscriptionName = routingKey.split(':').last
 
     val processor = new RpcServer.IProcessor {
       def process(delivery: Amqp.Delivery): Future[RpcServer.ProcessResult] = {
-        implicit val context = Context.from(delivery)
+        implicit val context: Context = Context.from(delivery)
 
         if (context.correlationId == "sbus:ping") {
           val pingAt = mapper.readTree(delivery.body).path("body").path("ping").asLong(0)
@@ -292,13 +299,16 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
           (try {
             logs("<~~~", subscriptionName, delivery.body, context.correlationId)
 
-            val payload = (Option(mapper.readTree(delivery.body)).map(_.get("body")).orNull match {
+            val body    = Option(mapper.readTree(delivery.body).get("body"))
+            val payload = (body.orNull match {
               case null ⇒ null
               case body ⇒ deserializeToClass(body, messageClass)
             }).asInstanceOf[T]
 
-            authProvider.verify(context, delivery.body) flatMap { _ ⇒
-              authProvider.authorize(context)
+            authProvider.verifyMessageSignature(context, delivery.body) flatMap { _ ⇒
+              authProvider.verifyCommandSignature(context, body.map(mapper.writeValueAsBytes)) flatMap { _ ⇒
+                authProvider.authorizeCommand(context)
+              }
             } recover { case e ⇒
               logs("auth error", subscriptionName, delivery.body, context.correlationId, e)
               throw new UnauthorizedError("Sbus message can not be verified or authorized", e)
@@ -332,7 +342,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
               if (attemptsMax.exists(_ >= attemptNr)) {
                 heads.put(Headers.RetryAttemptNr, s"${attemptNr + 1}")
 
-                val backoff = math.pow(2, math.min(attemptNr - 1, 6)).round * 1000  // max 64 seconds
+                val backoff = math.pow(2, math.min(attemptNr - 1, 6)).round * 1000 // max 64 seconds
 
                 val updProps = delivery.properties.builder()
                   .headers(heads)
@@ -357,13 +367,13 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
           } recover {
             case e @ (_: CompletionException | _: ExecutionException) if e.getCause != null ⇒ onFailure(delivery, e.getCause)
             case e: RuntimeException if e.getCause != null && !e.isInstanceOf[ErrorMessage] ⇒ onFailure(delivery, e.getCause)
-            case e: Throwable ⇒ onFailure(delivery, e)
+            case e: Throwable                                                               ⇒ onFailure(delivery, e)
           }
         }
       }
 
       def onFailure(delivery: Amqp.Delivery, e: Throwable): RpcServer.ProcessResult = {
-        implicit val context = Context.from(delivery)
+        implicit val context: Context = Context.from(delivery)
 
         logs("error", subscriptionName, e.toString.getBytes, context.correlationId, e)
 
@@ -383,8 +393,8 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
     }
 
     val binding = Amqp.AddBinding(Amqp.Binding(
-      exchange = Amqp.ExchangeParameters(channel.exchange, passive = false, exchangeType = channel.exchangeType),
-      queue = Amqp.QueueParameters(
+      exchange    = Amqp.ExchangeParameters(channel.exchange, passive = false, exchangeType = channel.exchangeType),
+      queue       = Amqp.QueueParameters(
         name       = channel.queueNameFormat.format(subscriptionName),
         passive    = false,
         durable    = channel.durable,
@@ -399,38 +409,38 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
 
     def createRpcActor(): Unit = {
       val rpcServer = ConnectionOwner.createChildActor(connection, Props(new RpcServer(
-        processor = processor,
-        init = List(binding),
-        channelParams = Some(ChannelParams)
-      ) {
-        override def connected(channel: Channel, forwarder: ActorRef): Receive = LoggingReceive({
-          case Amqp.ConsumerCancelled(consumerTag) ⇒
-            log.warning(s"Sbus consumer for $routingKey cancelled ($consumerTag), trying to shutdown it and connect again...")
-            self forward Amqp.Shutdown(new ShutdownSignalException(true, false, null, null))
+          processor     = processor,
+          init          = List(binding),
+          channelParams = Some(ChannelParams)
+        ) {
+          override def connected(channel: Channel, forwarder: ActorRef): Receive = LoggingReceive({
+            case Amqp.ConsumerCancelled(consumerTag) ⇒
+              log.warning(s"Sbus consumer for $routingKey cancelled ($consumerTag), trying to shutdown it and connect again...")
+              self forward Amqp.Shutdown(new ShutdownSignalException(true, false, null, null))
 
-            actorSystem.stop(self)
+              actorSystem.stop(self)
 
-            createRpcActor() // recreate
+              createRpcActor() // recreate
 
-          case Amqp.Shutdown(cause) if !cause.isInitiatedByApplication ⇒
-            context.stop(forwarder)
+            case Amqp.Shutdown(cause) if !cause.isInitiatedByApplication ⇒
+              context.stop(forwarder)
 
-            if (!cause.isHardError) {
-              context.parent ! ConnectionOwner.CreateChannel
-            }
+              if (!cause.isHardError) {
+                context.parent ! ConnectionOwner.CreateChannel
+              }
 
-            statusListeners.foreach(_ ! ChannelOwner.Disconnected)
-            context.become(disconnected)
+              statusListeners.foreach(_ ! ChannelOwner.Disconnected)
+              context.become(disconnected)
 
-        }: Receive) orElse super.connected(channel, forwarder)
+          }: Receive) orElse super.connected(channel, forwarder)
 
-        override def unhandled(message: Any): Unit = message match {
-          case Amqp.Shutdown(cause) ⇒
-            log.debug(s"Amqp.Shutdown $cause")
+          override def unhandled(message: Any): Unit = message match {
+            case Amqp.Shutdown(cause) ⇒
+              log.debug(s"Amqp.Shutdown $cause")
 
-          case _ ⇒
-            super.unhandled(message)
-        }
+            case _ ⇒
+              super.unhandled(message)
+          }
       }))
 
       log.debug(s"Sbus subscribed to: $subscriptionName / $channel")
