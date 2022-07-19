@@ -7,4 +7,4 @@ bump-tag:
 	git push && git push --tags
 
 release:
-	gradle clean publish -Pversion="${VERSION}" --info --refresh-dependencies
+	gradle clean publish -PpublishSonatype=true -Pversion="${VERSION}" --info --refresh-dependencies
