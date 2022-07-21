@@ -28,6 +28,7 @@ import com.sbuslab.model._
 import com.sbuslab.sbus.{Context, Headers, Transport}
 import com.sbuslab.sbus.auth.AuthProvider
 
+
 class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: ActorSystem, mapper: ObjectMapper) extends Transport {
 
   implicit val ec: ExecutionContextExecutor = actorSystem.dispatcher
@@ -52,50 +53,50 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
   private val rpcServers = new ConcurrentLinkedQueue[ActorRef]
 
   private val connection = actorSystem.actorOf(ConnectionOwner.props(
-      connFactory       = {
-        log.debug("Sbus connecting to: " + conf.getString("host"))
+    connFactory = {
+      log.debug("Sbus connecting to: " + conf.getString("host"))
 
-        val cf = new ConnectionFactory()
-        cf.setUsername(conf.getString("username"))
-        cf.setPassword(conf.getString("password"))
-        cf.setTopologyRecoveryEnabled(true)
+      val cf = new ConnectionFactory()
+      cf.setUsername(conf.getString("username"))
+      cf.setPassword(conf.getString("password"))
+      cf.setTopologyRecoveryEnabled(true)
 
-        if (conf.getBoolean("ssl.enabled")) {
-          val tks = KeyStore.getInstance("JKS")
+      if (conf.getBoolean("ssl.enabled")) {
+        val tks = KeyStore.getInstance("JKS")
 
         tks.load(new FileInputStream(
           conf.getString("ssl.truststore.certs-path")),
-            conf.getString("ssl.truststore.password").toCharArray
-          )
+          conf.getString("ssl.truststore.password").toCharArray
+        )
 
-          val tmf = TrustManagerFactory.getInstance("SunX509")
-          tmf.init(tks)
+        val tmf = TrustManagerFactory.getInstance("SunX509")
+        tmf.init(tks)
 
-          val sslContext = SSLContext.getInstance("TLSv1.2")
-          sslContext.init(null, tmf.getTrustManagers, null)
+        val sslContext = SSLContext.getInstance("TLSv1.2")
+        sslContext.init(null, tmf.getTrustManagers, null)
 
-          cf.useSslProtocol(sslContext)
-        }
+        cf.useSslProtocol(sslContext)
+      }
 
-        cf.setTopologyRecoveryRetryHandler(TopologyRecoveryRetryHandlerBuilder.builder()
-          .bindingRecoveryRetryCondition((_, _) ⇒ true)
-          .consumerRecoveryRetryCondition((_, _) ⇒ true)
-          .exchangeRecoveryRetryCondition((_, _) ⇒ true)
-          .queueRecoveryRetryCondition((_, _) ⇒ true)
-          .retryAttempts(Int.MaxValue)
-          .backoffPolicy(_ ⇒ Thread.sleep(100))
-          .build())
+      cf.setTopologyRecoveryRetryHandler(TopologyRecoveryRetryHandlerBuilder.builder()
+        .bindingRecoveryRetryCondition((_, _) ⇒ true)
+        .consumerRecoveryRetryCondition((_, _) ⇒ true)
+        .exchangeRecoveryRetryCondition((_, _) ⇒ true)
+        .queueRecoveryRetryCondition((_, _) ⇒ true)
+        .retryAttempts(Int.MaxValue)
+        .backoffPolicy(_ ⇒ Thread.sleep(100))
+        .build())
 
-        cf.setAutomaticRecoveryEnabled(true)
-        cf.setNetworkRecoveryInterval(5000)
-        cf.setRequestedHeartbeat(10)
-        cf.setConnectionTimeout(5000)
-        cf
-      },
-      reconnectionDelay = 3.seconds,
-      addressResolver   = Some(new ListAddressResolver(
-        conf.getString("host").split(',').map(host ⇒ new Address(host, conf.getInt("port"))).toList.asJava
-      ))
+      cf.setAutomaticRecoveryEnabled(true)
+      cf.setNetworkRecoveryInterval(5000)
+      cf.setRequestedHeartbeat(10)
+      cf.setConnectionTimeout(5000)
+      cf
+    },
+    reconnectionDelay = 3.seconds,
+    addressResolver   = Some(new ListAddressResolver(
+      conf.getString("host").split(',').map(host ⇒ new Address(host, conf.getInt("port"))).toList.asJava
+    ))
   ), name = "rabbitmq-connection")
 
   private val channelConfigs: Map[String, SbusChannel] = {
@@ -147,11 +148,11 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
   private def circuitBreaker[T](routingKey: String)(f: ⇒ Future[T]): Future[T] =
     if (circuitBreakerEnabled) {
       breakers.computeIfAbsent(routingKey, _ ⇒ {
-          new CircuitBreaker(
-            scheduler    = actorSystem.scheduler,
-            maxFailures  = conf.getInt("circuit-breaker.max-failures"),
-            callTimeout  = Duration.Zero,
-          resetTimeout = conf.getDuration("circuit-breaker.reset-timeout").toMillis.millis)
+        new CircuitBreaker(
+          scheduler    = actorSystem.scheduler,
+          maxFailures  = conf.getInt("circuit-breaker.max-failures"),
+          callTimeout  = Duration.Zero,
+        resetTimeout = conf.getDuration("circuit-breaker.reset-timeout").toMillis.millis)
       }).withCircuitBreaker(f)
     } else f
 
@@ -192,7 +193,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       bytes
     )
 
-    val propsBldr = new BasicProperties().builder()
+    val propsBuilder = new BasicProperties().builder()
       .deliveryMode(if (responseClass != null) 1 else 2) // 2 → persistent
       .messageId(ctx.get(Headers.ClientMessageId).getOrElse(UUID.randomUUID()).toString)
       .expiration(ctx.timeout match {
@@ -221,7 +222,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       logs("~~~>", realRoutingKey, bytes, corrId)
     }
 
-    val pub = Amqp.Publish(channel.exchange, realRoutingKey, bytes, Some(propsBldr.build()), mandatory = channel.mandatory)
+    val pub = Amqp.Publish(channel.exchange, realRoutingKey, bytes, Some(propsBuilder.build()), mandatory = channel.mandatory)
 
     (if (responseClass != null) {
        circuitBreaker(realRoutingKey) {
