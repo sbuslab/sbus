@@ -13,4 +13,6 @@ sbus.on[GetOrders, List[Order]]("get-orders") { (req, context) ⇒
 sbus.request[List[Order]]("get-orders", GetOrders(id = 123)) map { orders ⇒
   println(orders)
 }
+
+sbus.event("order-created", order)
 ```
