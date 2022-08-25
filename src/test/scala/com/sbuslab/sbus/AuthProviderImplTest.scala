@@ -457,23 +457,5 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       verified shouldBe a[Success[_]]
     }
-
-    "verifies cli generated command" in {
-      val test = TestSuite()
-
-      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
-
-      val body      = "{\"body\":{}}".getBytes
-      val timestamp = "1655826239963"
-      val origin    = "services/cli-service"
-      val context   = Context.empty
-        .withValue(Headers.Origin, origin)
-        .withValue(Headers.Signature, "N5Q31CHmWtZ4YDhXxJlTU_-s_yb0yIBEn3R5hB69syta6XC8n__kSrXabQ7Jdf3YMpQlzQAWZwDnuDdrKmM8AQ==")
-        .withValue(Headers.Timestamp, timestamp)
-
-      val verified = test.underTest.verifyCommandSignature(context, body)
-
-      verified shouldBe a[Success[_]]
-    }
   }
 }
