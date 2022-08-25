@@ -156,7 +156,7 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
 
       if (!edDSAEngine.verify(Base64.getUrlDecoder.decode(signature.replace('+', '-').replace('/', '_')))) {
         failure(
-          s"Signature invalid for sbus cmd: ${context.routingKey}, origin: $origin"
+          s"Signature invalid for sbus cmd: ${context.routingKey}, origin: $origin, body: ${cmd.map(new String(_))}, signature: $signature"
         )
       } else {
         success
