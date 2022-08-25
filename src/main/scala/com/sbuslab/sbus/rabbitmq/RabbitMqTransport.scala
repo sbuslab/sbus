@@ -466,7 +466,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
     } else {
       try mapper.treeToValue(node, responseClass) catch {
         case e: Throwable ⇒
-          throw new BadRequestError(s"Can't deserialize $node to $responseClass: ${e.getMessage}", e)
+          throw new BadRequestError(s"Can't deserialize ${node.toString.take(2048)} to $responseClass: ${e.getMessage}", e)
       }
     }
   }
