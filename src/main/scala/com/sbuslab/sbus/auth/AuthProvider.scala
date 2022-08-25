@@ -1,16 +1,19 @@
 package com.sbuslab.sbus.auth
 
 import scala.language.postfixOps
+
 import java.security.MessageDigest
 import java.util.Base64
 import scala.collection.JavaConverters._
 import scala.util.{Failure, Success, Try}
+
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.Logger
 import net.i2p.crypto.eddsa.{EdDSAEngine, EdDSAPrivateKey, EdDSAPublicKey, Utils}
 import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveSpec, EdDSANamedCurveTable, EdDSAPrivateKeySpec, EdDSAPublicKeySpec}
 import org.slf4j.LoggerFactory
+
 import com.sbuslab.model.{ForbiddenError, InternalServerError}
 import com.sbuslab.sbus.{Context, Headers}
 
@@ -21,7 +24,7 @@ trait AuthProvider {
 
   def signCommand(context: Context, cmd: Option[Any]): Context
 
-  def verifyCommandSignature(context: Context, body: Option[Array[Byte]]): Try[Unit]
+  def verifyCommandSignature(context: Context, body: Option[Any]): Try[Unit]
 
   def authorizeCommand(context: Context): Try[Unit]
 }
@@ -140,7 +143,7 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
 
   }
 
-  override def verifyCommandSignature(context: Context, cmd: Option[Array[Byte]]): Try[Unit] =
+  override def verifyCommandSignature(context: Context, cmd: Option[Any]): Try[Unit] =
     (for {
       origin     ← context.get(Headers.Origin)
       signature  ← context.get(Headers.Signature)
@@ -150,13 +153,14 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
       val edDSAEngine = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
       edDSAEngine.initVerify(pubKey)
 
-      cmd foreach edDSAEngine.update
+      val encodedCmd = cmd map mapper.writeValueAsBytes
+      encodedCmd foreach edDSAEngine.update
       edDSAEngine.update(routingKey.getBytes)
       edDSAEngine.update(origin.getBytes)
 
       if (!edDSAEngine.verify(Base64.getUrlDecoder.decode(signature.replace('+', '-').replace('/', '_')))) {
         failure(
-          s"Signature invalid for sbus cmd: ${context.routingKey}, origin: $origin, body: ${cmd.map(new String(_))}, signature: $signature"
+          s"Signature invalid for sbus cmd: ${context.routingKey}, origin: $origin, body: ${encodedCmd.map(new String(_))}, signature: $signature"
         )
       } else {
         success
@@ -228,5 +232,5 @@ class NoopAuthProvider extends AuthProvider {
 
   override def signCommand(context: Context, cmd: Option[Any]): Context = context
 
-  override def verifyCommandSignature(context: Context, cmd: Option[Array[Byte]]): Try[Unit] = success
+  override def verifyCommandSignature(context: Context, cmd: Option[Any]): Try[Unit] = success
 }
