@@ -202,12 +202,15 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       val context = Context.empty
         .withRoutingKey("system.event")
 
-      val result = test.underTest.signCommand(context, Option.empty)
+      val data = Map("gas" → 6325)
+      val payload = new ObjectMapper().writeValueAsBytes(data)
+
+      val result = test.underTest.signCommand(context, Some(data))
 
       result.get(Headers.Origin).get should equal(test.underTest.serviceName)
       result.get(Headers.Signature) should not be null
 
-      val verified = test.underTest.verifyCommandSignature(result, Option.empty)
+      val verified = test.underTest.verifyCommandSignature(result, Some(payload))
 
       verified shouldBe a[Success[_]]
     }
