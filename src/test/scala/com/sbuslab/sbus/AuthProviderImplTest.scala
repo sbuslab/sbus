@@ -3,21 +3,20 @@ package com.sbuslab.sbus
 import scala.language.postfixOps
 
 import java.security.MessageDigest
-import java.util.{Base64, UUID}
+import java.util.Base64
 import scala.collection.JavaConverters._
-import scala.util
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success}
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
-import net.i2p.crypto.eddsa.{EdDSAEngine, EdDSAPrivateKey, EdDSAPublicKey, KeyPairGenerator, Utils}
-import org.hibernate.validator.internal.util.stereotypes.Immutable
+import net.i2p.crypto.eddsa._
 import org.junit.runner.RunWith
 import org.mockito.Mockito.when
 import org.scalatest.{AsyncWordSpec, Matchers}
 import org.scalatest.junit.JUnitRunner
 import org.scalatest.mockito.MockitoSugar
 
+import com.sbuslab.model.Message
 import com.sbuslab.sbus.auth.{Action, AuthProviderImpl, Identity}
 import com.sbuslab.sbus.auth.providers.ConsulAuthConfigProvider
 
@@ -28,7 +27,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
     s"""{
        | enabled = true
        |
-       | name = "services/my-service"
+       | name = "services/java-service"
        |
        | rbac {
        |   identities = {
@@ -51,9 +50,10 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
        | }}""".stripMargin
 
   case class TestSuite(config: String = defaultConfig, required: Boolean = true) {
+    val objectMapper        = new ObjectMapper()
     val mockDynamicProvider = mock[ConsulAuthConfigProvider]
 
-    val keyPair = new KeyPairGenerator().generateKeyPair
+    val keyPair  = new KeyPairGenerator().generateKeyPair
     val keyPair2 = new KeyPairGenerator().generateKeyPair
 
     val underTest = new AuthProviderImpl(
@@ -67,23 +67,23 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
         .withValue(
           "public-keys",
           ConfigValueFactory.fromMap(Map[String, String](
-            ("services/my-service", Utils.bytesToHex(keyPair.getPublic.asInstanceOf[EdDSAPublicKey].getAbyte)),
+            ("services/java-service", Utils.bytesToHex(keyPair.getPublic.asInstanceOf[EdDSAPublicKey].getAbyte)),
             ("services/other-service", Utils.bytesToHex(keyPair2.getPublic.asInstanceOf[EdDSAPublicKey].getAbyte)),
             ("services/javascript-service", "970c32b647a1055065e2b5d50398a4dc9c3c71c077ba27dad8fb739a3f3ded45"),
             ("services/cli-service", "59842ab5f5d5b515126eb86a799d9fa4547b1b42209ca7ff96a189d4bd2f3130")
           ).asJava)
         )
         .resolve(),
-      new ObjectMapper(),
+      objectMapper,
       mockDynamicProvider
     )
 
     def signMessageRequest(
-                            context: Context,
-                            body: Array[Byte],
-                            serviceName: String,
-                            privKey: EdDSAPrivateKey,
-                            timestamp: Array[Byte]): Context = {
+      context: Context,
+      body: Array[Byte],
+      serviceName: String,
+      privKey: EdDSAPrivateKey,
+      timestamp: Array[Byte]): Context = {
       val signer = new EdDSAEngine(MessageDigest.getInstance(underTest.spec.getHashAlgorithm))
       signer.initSign(privKey)
 
@@ -91,16 +91,16 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       signer.update(timestamp)
 
       context
-        .withValue(Headers.MessageOrigin, serviceName)
-        .withValue(Headers.MessageSignature, Base64.getUrlEncoder.encodeToString(signer.sign()))
+        .withValue(Headers.Origin, serviceName)
+        .withValue(Headers.Signature, Base64.getUrlEncoder.encodeToString(signer.sign()))
     }
 
     def signCommand(
-                     context: Context,
-                     body: Array[Byte],
-                     serviceName: String,
-                     privKey: EdDSAPrivateKey,
-                     routingKey: Array[Byte]): Context = {
+      context: Context,
+      body: Array[Byte],
+      serviceName: String,
+      privKey: EdDSAPrivateKey,
+      routingKey: Array[Byte]): Context = {
       val signer = new EdDSAEngine(MessageDigest.getInstance(underTest.spec.getHashAlgorithm))
       signer.initSign(privKey)
 
@@ -114,12 +114,12 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
     }
 
     def verifyMessageSignature(
-                                signature: Array[Byte],
-                                body: Array[Byte],
-                                pubKey: EdDSAPublicKey,
-                                timestamp: Array[Byte],
-                                routingKey: Array[Byte],
-                                correlationId: Array[Byte]): Boolean = {
+      signature: Array[Byte],
+      body: Array[Byte],
+      pubKey: EdDSAPublicKey,
+      timestamp: Array[Byte],
+      routingKey: Array[Byte],
+      correlationId: Array[Byte]): Boolean = {
 
       val vrf = new EdDSAEngine(MessageDigest.getInstance(underTest.spec.getHashAlgorithm))
       vrf.initVerify(pubKey)
@@ -133,11 +133,11 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
     }
 
     def verifyCommand(
-                       signature: Array[Byte],
-                       body: Array[Byte],
-                       pubKey: EdDSAPublicKey,
-                       routingKey: Array[Byte],
-                       serviceName: Array[Byte]): Boolean = {
+      signature: Array[Byte],
+      body: Array[Byte],
+      pubKey: EdDSAPublicKey,
+      routingKey: Array[Byte],
+      serviceName: Array[Byte]): Boolean = {
       val vrf = new EdDSAEngine(MessageDigest.getInstance(underTest.spec.getHashAlgorithm))
       vrf.initVerify(pubKey)
 
@@ -157,17 +157,23 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
 
       val routingKey = "system.event"
-      val context = Context.empty
+      val context    = Context.empty
         .withRoutingKey(routingKey)
+      val message = new Message(routingKey, null)
 
-      val result = test.underTest.signCommand(context, Option.empty)
+      val result = test.underTest.signCommand(context, message)
 
       result.get(Headers.Origin).get should equal(test.underTest.serviceName)
       result.get(Headers.Signature) should not be null
 
+      System.out.println(result.origin)
+      System.out.println(result.signature)
+      System.out.println(Utils.bytesToHex(test.keyPair.getPublic.asInstanceOf[EdDSAPublicKey].getAbyte))
+      System.out.println(test.objectMapper.writeValueAsString(message))
+
       val verified = test.verifyCommand(
         result.get(Headers.Signature).map(sig ⇒ Base64.getUrlDecoder.decode(sig.replace('+', '-').replace('/', '_'))).get,
-        Array.empty,
+        test.objectMapper.writeValueAsBytes(message),
         test.keyPair.getPublic.asInstanceOf[EdDSAPublicKey],
         routingKey.getBytes,
         test.underTest.serviceName.getBytes
@@ -182,13 +188,13 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
 
       val routingKey = "system.event"
-      val context = Context.empty
+      val context    = Context.empty
         .withRoutingKey(routingKey)
         .withValue(Headers.ProxyPass, true)
         .withValue(Headers.Signature, "fakesig")
         .withValue(Headers.Origin, "fakeorigin")
 
-      val result = test.underTest.signCommand(context, Option.empty)
+      val result = test.underTest.signCommand(context, new Message(routingKey, null))
 
       result.get(Headers.Origin).get should equal("fakeorigin")
       result.get(Headers.Signature).get should equal("fakesig")
@@ -199,15 +205,20 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
 
-      val context = Context.empty
-        .withRoutingKey("system.event")
+      val routingKey = "system.event"
+      val context    = Context.empty
+        .withRoutingKey(routingKey)
 
-      val result = test.underTest.signCommand(context, Option.empty)
+      val data         = Map("gas" → 6325)
+      val message      = new Message(routingKey, data)
+      val deliveryBody = test.objectMapper.writeValueAsBytes(message)
+
+      val result = test.underTest.signCommand(context, message)
 
       result.get(Headers.Origin).get should equal(test.underTest.serviceName)
       result.get(Headers.Signature) should not be null
 
-      val verified = test.underTest.verifyCommandSignature(result, Option.empty)
+      val verified = test.underTest.verifyCommandSignature(result, deliveryBody)
 
       verified shouldBe a[Success[_]]
     }
@@ -218,19 +229,21 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
 
       val routingKey = "system.event"
-      val context = Context.empty
+      val context    = Context.empty
         .withRoutingKey(routingKey)
+      val message    = new Message(routingKey, null)
+      val bytes      = test.objectMapper.writeValueAsBytes(message)
 
       val signed =
         test.signCommand(
           context,
-          Array.empty,
-          "services/my-service",
+          bytes,
+          "services/java-service",
           test.keyPair2.getPrivate.asInstanceOf[EdDSAPrivateKey],
           routingKey.getBytes
         )
 
-      val verified = test.underTest.verifyCommandSignature(signed, Option.empty)
+      val verified = test.underTest.verifyCommandSignature(signed, bytes)
 
       verified shouldBe a[Failure[_]]
     }
@@ -241,291 +254,34 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
       when(test.mockDynamicProvider.isRequired).thenReturn(false)
 
-      val body = "{}".getBytes
       val routingKey = "system.event"
-      val context = Context.empty
+      val context    = Context.empty
         .withRoutingKey(routingKey)
+      val message    = new Message(routingKey, null)
+      val bytes      = test.objectMapper.writeValueAsBytes(message)
 
       val signed =
         test.signCommand(
           context,
-          Array.empty,
-          "services/my-service",
+          bytes,
+          "services/java-service",
           test.keyPair2.getPrivate.asInstanceOf[EdDSAPrivateKey],
           routingKey.getBytes
         )
 
-      val verified = test.underTest.verifyCommandSignature(signed, Option.empty)
+      val verified = test.underTest.verifyCommandSignature(signed, bytes)
 
       verified shouldBe a[Success[_]]
     }
 
-    "sign messages" in {
-      val test = TestSuite()
-
-      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
-
-      val routingKey = "route.main"
-      val correlationId = UUID.randomUUID.toString
-      val body = "{}".getBytes
-      val timestamp = System.currentTimeMillis().toString
-      val context = Context.empty
-        .withValue(Headers.Timestamp, timestamp)
-        .withValue(Headers.RoutingKey, routingKey)
-        .withValue(Headers.CorrelationId, correlationId)
-
-      val result = test.underTest.signMessageRequest(context, body)
-
-      result.get(Headers.MessageOrigin).get should equal(test.underTest.serviceName)
-      result.get(Headers.MessageSignature) should not be null
-
-      val verified = test.verifyMessageSignature(
-        result.get(Headers.MessageSignature).map(sig ⇒ Base64.getUrlDecoder.decode(sig.replace('+', '-').replace('/', '_'))).get,
-        body,
-        test.keyPair.getPublic.asInstanceOf[EdDSAPublicKey],
-        timestamp.getBytes,
-        routingKey.getBytes,
-        correlationId.getBytes,
-      )
-
-      verified shouldBe true
-    }
-
-    "sign and verify messages" in {
-      val test = TestSuite()
-
-      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
-
-      val body = "{}".getBytes
-      val timestamp = System.currentTimeMillis().toString
-      val context = Context.empty
-        .withValue(Headers.Timestamp, timestamp)
-
-      val result = test.underTest.signMessageRequest(context, body)
-
-      result.get(Headers.MessageOrigin).get should equal(test.underTest.serviceName)
-      result.get(Headers.MessageSignature) should not be null
-
-      val verified = test.underTest.verifyMessageSignature(result, body)
-
-      verified shouldBe a[Success[_]]
-    }
-
-    "verify messages with the right key pair" in {
-      val test = TestSuite()
-
-      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
-
-      val body = "{}".getBytes
-      val timestamp = System.currentTimeMillis().toString
-      val context = Context.empty
-        .withValue(Headers.Timestamp, timestamp)
-
-      val signed =
-        test.signMessageRequest(
-          context,
-          body,
-          "services/other-service",
-          test.keyPair2.getPrivate.asInstanceOf[EdDSAPrivateKey],
-          timestamp.getBytes
-        )
-
-      val verified = test.underTest.verifyMessageSignature(signed, body)
-
-      verified shouldBe a[Success[_]]
-    }
-
-    "not verify messages with the wrong key pair with required true" in {
-      val test = TestSuite()
-
-      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
-
-      val body = "{}".getBytes
-      val timestamp = System.currentTimeMillis().toString
-
-      val context = Context.empty
-        .withValue(Headers.Timestamp, timestamp)
-
-      val signed =
-        test.signMessageRequest(
-          context,
-          body,
-          "services/my-service",
-          test.keyPair2.getPrivate.asInstanceOf[EdDSAPrivateKey],
-          timestamp.getBytes
-        )
-
-      val verified = test.underTest.verifyMessageSignature(signed, body)
-
-      verified shouldBe a[Failure[_]]
-    }
-
-    "verify messages with the wrong key pair with required false" in {
-      val test = TestSuite(required = false)
-
-      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
-      when(test.mockDynamicProvider.isRequired).thenReturn(false)
-
-      val body = "{}".getBytes
-      val timestamp = System.currentTimeMillis().toString
-
-      val context = Context.empty
-        .withValue(Headers.Timestamp, timestamp)
-
-      val signed =
-        test.signMessageRequest(
-          context,
-          body,
-          "services/my-service",
-          test.keyPair2.getPrivate.asInstanceOf[EdDSAPrivateKey],
-          timestamp.getBytes
-        )
-
-      val verified = test.underTest.verifyMessageSignature(signed, body)
-
-      verified shouldBe a[Success[_]]
-    }
-
-    "not verify messages with no key pair with required true" in {
-      val test = TestSuite()
-
-      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
-
-      val body = "{}".getBytes
-      val timestamp = System.currentTimeMillis().toString
-
-      val context = Context.empty
-        .withValue(Headers.Timestamp, timestamp)
-
-      val signed =
-        test.signMessageRequest(
-          context,
-          body,
-          "services/random-service",
-          test.keyPair2.getPrivate.asInstanceOf[EdDSAPrivateKey],
-          timestamp.getBytes
-        )
-
-      val verified = test.underTest.verifyMessageSignature(signed, body)
-
-      verified shouldBe a[Failure[_]]
-    }
-
-    "verify messages with no key pair with required false" in {
-      val test = TestSuite(required = false)
-
-      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
-      when(test.mockDynamicProvider.isRequired).thenReturn(false)
-
-      val body = "{}".getBytes
-      val timestamp = System.currentTimeMillis().toString
-
-      val context = Context.empty
-        .withValue(Headers.Timestamp, timestamp)
-
-      val signed =
-        test.signMessageRequest(
-          context,
-          body,
-          "services/random-service",
-          test.keyPair2.getPrivate.asInstanceOf[EdDSAPrivateKey],
-          timestamp.getBytes
-        )
-
-      val verified = test.underTest.verifyMessageSignature(signed, body)
-
-      verified shouldBe a[Success[_]]
-    }
-
-    "not verify messages with no origin with required true" in {
-      val test = TestSuite()
-
-      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
-
-      val body = "{}".getBytes
-      val timestamp = System.currentTimeMillis().toString
-
-      val context = Context.empty
-        .withValue(Headers.Timestamp, timestamp)
-
-      val signed = test.signMessageRequest(context, body, null, test.keyPair2.getPrivate.asInstanceOf[EdDSAPrivateKey], timestamp.getBytes)
-
-      val verified = test.underTest.verifyMessageSignature(signed, body)
-
-      verified shouldBe a[Failure[_]]
-    }
-
-    "verify messages with no origin with required false" in {
-      val test = TestSuite(required = false)
-
-      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
-      when(test.mockDynamicProvider.isRequired).thenReturn(false)
-
-      val body = "{}".getBytes
-      val timestamp = System.currentTimeMillis().toString
-
-      val context = Context.empty
-        .withValue(Headers.Timestamp, timestamp)
-
-      val signed = test.signMessageRequest(context, body, null, test.keyPair2.getPrivate.asInstanceOf[EdDSAPrivateKey], timestamp.getBytes)
-
-      val verified = test.underTest.verifyMessageSignature(signed, body)
-
-      verified shouldBe a[Success[_]]
-    }
-
-    "not verify messages with no signature with required true" in {
-      val test = TestSuite()
-
-      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
-
-      val body = "{}".getBytes
-      val context = Context.empty
-        .withValue(Headers.MessageOrigin, "services/other-service")
-
-      val verified = test.underTest.verifyMessageSignature(context, body)
-
-      verified shouldBe a[Failure[_]]
-    }
-
-    "verify messages with no signature with required false" in {
-      val test = TestSuite(required = false)
-
-      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
-      when(test.mockDynamicProvider.isRequired).thenReturn(false)
-
-      val body = "{}".getBytes
-      val context = Context.empty
-        .withValue(Headers.MessageOrigin, "services/other-service")
-
-      val verified = test.underTest.verifyMessageSignature(context, body)
-
-      verified shouldBe a[Success[_]]
-    }
-
-    "verify messages with no signature with required false by dynamic is true" in {
-      val test = TestSuite(required = false)
-
-      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
-      when(test.mockDynamicProvider.isRequired).thenReturn(true)
-
-      val body = "{}".getBytes
-      val context = Context.empty
-        .withValue(Headers.MessageOrigin, "services/other-service")
-
-      val verified = test.underTest.verifyMessageSignature(context, body)
-
-      verified shouldBe a[Failure[_]]
-    }
-
-    "authorize messages when origin is self" in {
+    "authorize command when origin is self" in {
       val test = TestSuite()
 
       when(test.mockDynamicProvider.getActions).thenReturn(Map[String, Action]())
       when(test.mockDynamicProvider.getIdentities).thenReturn(Map[String, Identity]())
 
       val context = Context.empty
-        .withValue(Headers.Origin, "services/my-service")
+        .withValue(Headers.Origin, "services/java-service")
         .withValue(Headers.RoutingKey, "users.delete-user")
 
       val authorized = test.underTest.authorizeCommand(context)
@@ -533,7 +289,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       authorized shouldBe a[Success[_]]
     }
 
-    "authorize messages when origin is authorized by being a memberOf  by specific action" in {
+    "authorize command when origin is authorized by being a memberOf  by specific action" in {
       val test = TestSuite()
 
       when(test.mockDynamicProvider.getActions).thenReturn(Map[String, Action]())
@@ -548,7 +304,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       authorized shouldBe a[Success[_]]
     }
 
-    "authorize messages when origin is authorized directly by specific action" in {
+    "authorize command when origin is authorized directly by specific action" in {
       val test = TestSuite()
 
       when(test.mockDynamicProvider.getActions).thenReturn(Map[String, Action]())
@@ -563,7 +319,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       authorized shouldBe a[Success[_]]
     }
 
-    "authorize messages when origin is authorized by action by wildcard" in {
+    "authorize command when origin is authorized by action by wildcard" in {
       val test = TestSuite()
 
       when(test.mockDynamicProvider.getActions).thenReturn(Map[String, Action]())
@@ -578,7 +334,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       authorized shouldBe a[Success[_]]
     }
 
-    "authorize messages when unknown origin is authorized by action by wildcard" in {
+    "authorize command when unknown origin is authorized by action by wildcard" in {
       val test = TestSuite()
 
       when(test.mockDynamicProvider.getActions).thenReturn(Map[String, Action]())
@@ -593,7 +349,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       authorized shouldBe a[Success[_]]
     }
 
-    "authorize messages when origin is authorized by wildcard for action and permission" in {
+    "authorize command when origin is authorized by wildcard for action and permission" in {
       val test = TestSuite()
 
       when(test.mockDynamicProvider.getActions).thenReturn(Map[String, Action]())
@@ -608,7 +364,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       authorized shouldBe a[Success[_]]
     }
 
-    "deny messages when origin is not authorized by specific action" in {
+    "deny command when origin is not authorized by specific action" in {
       val test = TestSuite()
 
       when(test.mockDynamicProvider.getActions).thenReturn(Map[String, Action]())
@@ -623,7 +379,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       authorized shouldBe a[Failure[_]]
     }
 
-    "authorize messages when origin is authorized by dynamic provider with a new action" in {
+    "authorize command when origin is authorized by dynamic provider with a new action" in {
       val test = TestSuite()
 
       when(test.mockDynamicProvider.getActions).thenReturn(Map[String, Action](("users.delete-user", Action(Set("users/sarah.dene")))))
@@ -638,7 +394,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       authorized shouldBe a[Success[_]]
     }
 
-    "authorize messages when origin is authorized by dynamic provider with a new identity" in {
+    "authorize command when origin is authorized by dynamic provider with a new identity" in {
       val test = TestSuite()
 
       when(test.mockDynamicProvider.getActions).thenReturn(Map[String, Action]())
@@ -653,7 +409,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       authorized shouldBe a[Success[_]]
     }
 
-    "authorize messages when origin is not authorized by specific action when required is off" in {
+    "authorize command when origin is not authorized by specific action when required is off" in {
       val test = TestSuite(required = false)
 
       when(test.mockDynamicProvider.getActions).thenReturn(Map[String, Action]())
@@ -669,7 +425,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       authorized shouldBe a[Success[_]]
     }
 
-    "deny messages when origin is not authorized by specific action when required is dynamically on" in {
+    "deny command when origin is not authorized by specific action when required is dynamically on" in {
       val test = TestSuite(required = false)
 
       when(test.mockDynamicProvider.getActions).thenReturn(Map[String, Action]())
@@ -685,37 +441,19 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       authorized shouldBe a[Failure[_]]
     }
 
-    "verifies javascript generated signatures" in {
+    "verifies javascript generated command" in {
       val test = TestSuite()
 
       when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
 
-      val body = "{}".getBytes
+      val body      = "{}".getBytes
       val timestamp = "1655829081471"
-      val context = Context.empty
-        .withValue(Headers.MessageOrigin, "services/javascript-service")
-        .withValue(Headers.MessageSignature, "tC2YsPMhL0WnHkwDdGDjuOdku3ACIBXfZwyUXhLCiIDt50HqzB4cyOkZtlwvF2ZD0IMYnAWszzv5--O1C5LLCQ")
+      val context   = Context.empty
+        .withValue(Headers.Origin, "services/javascript-service")
+        .withValue(Headers.Signature, "tC2YsPMhL0WnHkwDdGDjuOdku3ACIBXfZwyUXhLCiIDt50HqzB4cyOkZtlwvF2ZD0IMYnAWszzv5--O1C5LLCQ")
         .withValue(Headers.Timestamp, timestamp)
 
-      val verified = test.underTest.verifyMessageSignature(context, body)
-
-      verified shouldBe a[Success[_]]
-    }
-
-    "verifies cli generated signatures" in {
-      val test = TestSuite()
-
-      when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
-
-      val body = "{\"body\":{}}".getBytes
-      val timestamp = "1655826239963"
-      val origin = "services/cli-service"
-      val context = Context.empty
-        .withValue(Headers.MessageOrigin, origin)
-        .withValue(Headers.MessageSignature, "N5Q31CHmWtZ4YDhXxJlTU_-s_yb0yIBEn3R5hB69syta6XC8n__kSrXabQ7Jdf3YMpQlzQAWZwDnuDdrKmM8AQ==")
-        .withValue(Headers.Timestamp, timestamp)
-
-      val verified = test.underTest.verifyMessageSignature(context, body)
+      val verified = test.underTest.verifyCommandSignature(context, body)
 
       verified shouldBe a[Success[_]]
     }

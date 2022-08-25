@@ -65,9 +65,7 @@ object Context {
     Headers.Auth,
     Headers.UserAgent,
     Headers.Origin,
-    Headers.Signature,
-    Headers.MessageOrigin,
-    Headers.MessageSignature,
+    Headers.Signature
   )
 
   private val notLoggedHeaders =
