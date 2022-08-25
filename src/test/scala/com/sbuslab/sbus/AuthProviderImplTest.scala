@@ -69,7 +69,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
           ConfigValueFactory.fromMap(Map[String, String](
             ("services/java-service", Utils.bytesToHex(keyPair.getPublic.asInstanceOf[EdDSAPublicKey].getAbyte)),
             ("services/other-service", Utils.bytesToHex(keyPair2.getPublic.asInstanceOf[EdDSAPublicKey].getAbyte)),
-            ("services/javascript-service", "970c32b647a1055065e2b5d50398a4dc9c3c71c077ba27dad8fb739a3f3ded45"),
+            ("services/javascript-service", "bb908e16a0d9024a8d25ca720aaf2a4e35126462a329b52fbe01837545d00432"),
             ("services/cli-service", "59842ab5f5d5b515126eb86a799d9fa4547b1b42209ca7ff96a189d4bd2f3130")
           ).asJava)
         )
@@ -446,12 +446,11 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
 
-      val body      = "{}".getBytes
-      val timestamp = "1655829081471"
+      val body      = s"""{"routingKey":"system.event","body":null}""".getBytes
       val context   = Context.empty
         .withValue(Headers.Origin, "services/javascript-service")
-        .withValue(Headers.Signature, "tC2YsPMhL0WnHkwDdGDjuOdku3ACIBXfZwyUXhLCiIDt50HqzB4cyOkZtlwvF2ZD0IMYnAWszzv5--O1C5LLCQ")
-        .withValue(Headers.Timestamp, timestamp)
+        .withValue(Headers.Signature, "1fwFNGp6_3cuKNV99hmU6bH1ofR2Y0fMLXCWo66EIC65hI2H6AcAA6wa1qMhT48Jh3lChzKFbBAR46cnU4cFCA")
+        .withValue(Headers.RoutingKey, "system.event")
 
       val verified = test.underTest.verifyCommandSignature(context, body)
 
