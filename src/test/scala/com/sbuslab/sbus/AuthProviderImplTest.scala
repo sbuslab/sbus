@@ -227,6 +227,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       val test = TestSuite()
 
       when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
+      when(test.mockDynamicProvider.isRequired).thenReturn(Option.empty)
 
       val routingKey = "system.event"
       val context    = Context.empty
@@ -252,7 +253,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       val test = TestSuite(required = false)
 
       when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
-      when(test.mockDynamicProvider.isRequired).thenReturn(false)
+      when(test.mockDynamicProvider.isRequired).thenReturn(Some(false))
 
       val routingKey = "system.event"
       val context    = Context.empty
@@ -369,6 +370,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       when(test.mockDynamicProvider.getActions).thenReturn(Map[String, Action]())
       when(test.mockDynamicProvider.getIdentities).thenReturn(Map[String, Identity]())
+      when(test.mockDynamicProvider.isRequired).thenReturn(Option.empty)
 
       val context = Context.empty
         .withValue(Headers.Origin, "users/sarah.dene")
@@ -414,7 +416,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       when(test.mockDynamicProvider.getActions).thenReturn(Map[String, Action]())
       when(test.mockDynamicProvider.getIdentities).thenReturn(Map[String, Identity]())
-      when(test.mockDynamicProvider.isRequired).thenReturn(false)
+      when(test.mockDynamicProvider.isRequired).thenReturn(Some(false))
 
       val context = Context.empty
         .withValue(Headers.Origin, "users/sarah.dene")
@@ -430,7 +432,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       when(test.mockDynamicProvider.getActions).thenReturn(Map[String, Action]())
       when(test.mockDynamicProvider.getIdentities).thenReturn(Map[String, Identity]())
-      when(test.mockDynamicProvider.isRequired).thenReturn(true)
+      when(test.mockDynamicProvider.isRequired).thenReturn(Some(true))
 
       val context = Context.empty
         .withValue(Headers.Origin, "users/sarah.dene")

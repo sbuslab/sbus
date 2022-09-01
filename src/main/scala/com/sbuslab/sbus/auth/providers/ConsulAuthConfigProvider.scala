@@ -108,7 +108,7 @@ class ConsulAuthConfigProvider(
     ).obj.asInstanceOf[Map[String, Identity]]
   }
 
-  override def isRequired: Boolean = opt[Boolean]("required", _.getBoolean).getOrElse(false)
+  override def isRequired: Option[Boolean] = opt[Boolean]("required", _.getBoolean)
 
   private def getConfig: Config = {
     cache.compute(

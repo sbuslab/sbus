@@ -6,5 +6,5 @@ trait DynamicAuthConfigProvider {
   def getPublicKeys: Map[String, EdDSAPublicKey]
   def getActions: Map[String, Action]
   def getIdentities: Map[String, Identity]
-  def isRequired: Boolean
+  def isRequired: Option[Boolean]
 }

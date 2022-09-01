@@ -11,5 +11,5 @@ class NoopDynamicProvider() extends DynamicAuthConfigProvider {
 
   override def getIdentities: Map[String, Identity] = Map.empty
 
-  override def isRequired = false
+  override def isRequired = Option.empty
 }

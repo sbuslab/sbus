@@ -219,7 +219,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
 
       val required = test.underTest.isRequired
 
-      required should equal(false)
+      required should equal(Some(false))
     }
 
     "successfully fetch cached required config" in {
@@ -231,7 +231,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
 
       val required = test.underTest.isRequired
 
-      required should equal(false)
+      required should equal(Some(false))
 
       stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
         okJson("{\"required\": true}")
@@ -241,7 +241,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
 
       verify(WireMock.exactly(1), getRequestedFor(urlPathEqualTo(s"/${test.underTest.configPath}")))
 
-      requiredAfter should equal(false)
+      requiredAfter should equal(Some(false))
     }
 
     "successfully refresh cached required config" in {
@@ -253,7 +253,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
 
       val required = test.underTest.isRequired
 
-      required should equal(false)
+      required should equal(Some(false))
 
       Thread.sleep(1000)
 
@@ -265,7 +265,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
 
       verify(WireMock.exactly(2), getRequestedFor(urlPathEqualTo(s"/${test.underTest.configPath}")))
 
-      requiredAfter should equal(true)
+      requiredAfter should equal(Some(true))
     }
 
     "successfully default required config" in {
@@ -277,7 +277,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
 
       val required = test.underTest.isRequired
 
-      required should equal(false)
+      required should equal(None)
     }
 
     "successfully fetch public keys" in {
