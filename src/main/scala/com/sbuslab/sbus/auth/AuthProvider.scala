@@ -160,7 +160,7 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
     localIdentities ++ dynamicProvider.getIdentities
 
   private def isRequired: Boolean =
-    localIsRequired || dynamicProvider.isRequired
+    dynamicProvider.isRequired.getOrElse(localIsRequired)
 
   private def failure(reason: String): Try[Unit] = {
     log.warn(reason)
