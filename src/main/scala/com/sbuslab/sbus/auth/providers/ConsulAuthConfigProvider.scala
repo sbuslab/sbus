@@ -4,21 +4,23 @@ import java.net.{HttpURLConnection, URL}
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import scala.collection.JavaConverters._
+import scala.reflect.ClassTag
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.typesafe.config.{Config, ConfigFactory, ConfigValue}
+import com.fasterxml.jackson.databind.json.JsonMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
+import com.typesafe.config.{Config, ConfigFactory, ConfigRenderOptions}
 import net.i2p.crypto.eddsa.{EdDSAPublicKey, Utils}
 import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveTable, EdDSAPublicKeySpec}
 
 import com.sbuslab.model.InternalServerError
 import com.sbuslab.sbus.auth.{Action, DynamicAuthConfigProvider, Identity}
 
-
 class ConsulAuthConfigProvider(
-  conf: Config,
-  mapper: ObjectMapper) extends DynamicAuthConfigProvider {
+  conf: Config) extends DynamicAuthConfigProvider {
 
   case class CachedObject(expiredAt: Long, obj: Any)
+
+  val mapper = JsonMapper.builder().addModule(DefaultScalaModule).build()
 
   val cache = new ConcurrentHashMap[String, CachedObject]()
   val spec  = EdDSANamedCurveTable.getByName("Ed25519")
@@ -68,8 +70,7 @@ class ConsulAuthConfigProvider(
     ).obj.asInstanceOf[Map[String, EdDSAPublicKey]]
   }
 
-  override def getActions: Map[String, Action] = getMap("actions")
-    .map { case (key, value) ⇒ key → Action(value.atPath("/").getStringList("/").asScala.toSet) }
+  override def getActions: Map[String, Action] = getMap[Action]("actions")
 
   override def getIdentities: Map[String, Identity] = {
     def load: Map[String, Identity] =
@@ -85,10 +86,10 @@ class ConsulAuthConfigProvider(
 
           if (resp.getResponseCode == 200) {
             Some(mapper.readTree(resp.getInputStream).elements().asScala.map { node ⇒
-              val permissions =
-                mapper.readValue(Base64.getDecoder.decode(node.path("Value").asText()), classOf[java.util.Set[String]]).asScala.toSet
+              val identity =
+                mapper.readValue(Base64.getDecoder.decode(node.path("Value").asText()), classOf[Identity])
 
-              node.path("Key").asText().stripPrefix(s"$identitiesPath").stripPrefix("/") → Identity(permissions)
+              node.path("Key").asText().stripPrefix(s"$identitiesPath").stripPrefix("/") → identity
             }.toMap)
           } else {
             None
@@ -135,10 +136,13 @@ class ConsulAuthConfigProvider(
     }
   }
 
-  private def getMap(path: String): Map[String, ConfigValue] = {
+  private def getMap[T](path: String)(implicit classTag: ClassTag[T]): Map[String, T] = {
     val config = getConfig
     if (config.hasPath(path)) {
-      config.getObject(path).entrySet().asScala.map(entry ⇒ entry.getKey → entry.getValue).toMap
+      config.getObject(path).asScala.toMap.map {
+        case (key, obj) ⇒
+          key → mapper.readValue(obj.render(ConfigRenderOptions.concise().setJson(true)), classTag.runtimeClass).asInstanceOf[T]
+      }
     } else {
       Map.empty
     }

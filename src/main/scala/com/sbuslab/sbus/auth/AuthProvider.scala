@@ -7,26 +7,29 @@ import java.util.Base64
 import scala.collection.JavaConverters._
 import scala.util.{Failure, Success, Try}
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.typesafe.config.Config
+import com.fasterxml.jackson.databind.json.JsonMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
+import com.typesafe.config.{Config, ConfigRenderOptions}
 import com.typesafe.scalalogging.Logger
 import net.i2p.crypto.eddsa.{EdDSAEngine, EdDSAPrivateKey, EdDSAPublicKey, Utils}
 import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveSpec, EdDSANamedCurveTable, EdDSAPrivateKeySpec, EdDSAPublicKeySpec}
 import org.slf4j.LoggerFactory
 
-import com.sbuslab.model.{ForbiddenError, InternalServerError, Message}
+import com.sbuslab.model.{ForbiddenError, InternalServerError}
 import com.sbuslab.sbus.{Context, Headers}
 
 trait AuthProvider {
-  def signCommand(context: Context, cmd: Message): Context
+  def signCommand(context: Context, cmd: Array[Byte]): Context
 
   def verifyCommandSignature(context: Context, body: Array[Byte]): Try[Unit]
 
   def authorizeCommand(context: Context): Try[Unit]
 }
 
-class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicProvider: DynamicAuthConfigProvider)
+class AuthProviderImpl(val conf: Config, val dynamicProvider: DynamicAuthConfigProvider)
     extends AuthProvider {
+
+  val mapper = JsonMapper.builder().addModule(DefaultScalaModule).build()
 
   val log: Logger = Logger(LoggerFactory.getLogger("sbus.auth"))
 
@@ -49,11 +52,11 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
   } toMap
 
   val localActions: Map[String, Action] = conf.getConfig("rbac").getObject("actions").asScala.toMap.map { case (action, obj) ⇒
-    action → Action(obj.atPath("/").getStringList("/").asScala.toSet)
+    action → mapper.readValue(obj.render(ConfigRenderOptions.concise().setJson(true)), classOf[Action])
   }
 
   val localIdentities: Map[String, Identity] = conf.getConfig("rbac").getObject("identities").asScala.toMap.map { case (owner, obj) ⇒
-    owner → Identity(obj.atPath("/").getStringList("/").asScala.toSet)
+    owner → mapper.readValue(obj.render(ConfigRenderOptions.concise().setJson(true)), classOf[Identity])
   }
 
   private val success = Success {}
@@ -123,14 +126,14 @@ class AuthProviderImpl(val conf: Config, val mapper: ObjectMapper, val dynamicPr
       )
     }
 
-  override def signCommand(context: Context, cmd: Message): Context = {
+  override def signCommand(context: Context, cmd: Array[Byte]): Context = {
     if (context.get(Headers.ProxyPass).exists(_.toBoolean)) {
       context
     } else {
       val edDSAEngine = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
       edDSAEngine.initSign(privKey)
 
-      edDSAEngine.update(mapper.writeValueAsBytes(cmd))
+      edDSAEngine.update(cmd)
       context.get(Headers.RoutingKey) foreach { routingKey ⇒ edDSAEngine.update(routingKey.getBytes) }
       edDSAEngine.update(serviceName.getBytes)
 
@@ -178,7 +181,7 @@ class NoopAuthProvider extends AuthProvider {
 
   override def authorizeCommand(context: Context): Try[Unit] = success
 
-  override def signCommand(context: Context, cmd: Message): Context = context
+  override def signCommand(context: Context, cmd: Array[Byte]): Context = context
 
   override def verifyCommandSignature(context: Context, cmd: Array[Byte]): Try[Unit] = success
 }

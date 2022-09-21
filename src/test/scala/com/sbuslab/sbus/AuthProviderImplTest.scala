@@ -8,6 +8,7 @@ import scala.collection.JavaConverters._
 import scala.util.{Failure, Success}
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 import net.i2p.crypto.eddsa._
 import org.junit.runner.RunWith
@@ -31,26 +32,26 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
        |
        | rbac {
        |   identities = {
-       |     "users/joe.bloggs": [
-       |       "devs"
-       |     ]
-       |     "users/sarah.dene": [
-       |       "support"
-       |     ]
-       |     "services/other-service": [
-       |       "services"
-       |     ]
+       |     "users/joe.bloggs": {
+       |       "groups": ["devs"]
+       |     }
+       |     "users/sarah.dene": {
+       |       "groups": ["support"]
+       |     }
+       |     "services/other-service": {
+       |       "groups": ["services"]
+       |     }
        |   }
        |   actions = {
-       |     "*": ["*"]
-       |     "users.create-user": ["devs", "services", "users/sarah.dene"]
-       |     "users.delete-user": ["devs"]
-       |     "users.update-user": ["*"]
+       |     "*": { "permissions": ["*"] }
+       |     "users.create-user": { "permissions": ["devs", "services", "users/sarah.dene"] }
+       |     "users.delete-user": { "permissions": ["devs"] }
+       |     "users.update-user": { "permissions": ["*"] }
        |   }
        | }}""".stripMargin
 
   case class TestSuite(config: String = defaultConfig, required: Boolean = true) {
-    val objectMapper        = new ObjectMapper()
+    val objectMapper        = new ObjectMapper().registerModule(DefaultScalaModule)
     val mockDynamicProvider = mock[ConsulAuthConfigProvider]
 
     val keyPair  = new KeyPairGenerator().generateKeyPair
@@ -74,7 +75,6 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
           ).asJava)
         )
         .resolve(),
-      objectMapper,
       mockDynamicProvider
     )
 
@@ -159,21 +159,16 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       val routingKey = "system.event"
       val context    = Context.empty
         .withRoutingKey(routingKey)
-      val message = new Message(routingKey, null)
+      val message    = test.objectMapper.writeValueAsBytes(new Message(routingKey, null))
 
       val result = test.underTest.signCommand(context, message)
 
       result.get(Headers.Origin).get should equal(test.underTest.serviceName)
       result.get(Headers.Signature) should not be null
 
-      System.out.println(result.origin)
-      System.out.println(result.signature)
-      System.out.println(Utils.bytesToHex(test.keyPair.getPublic.asInstanceOf[EdDSAPublicKey].getAbyte))
-      System.out.println(test.objectMapper.writeValueAsString(message))
-
       val verified = test.verifyCommand(
         result.get(Headers.Signature).map(sig ⇒ Base64.getUrlDecoder.decode(sig.replace('+', '-').replace('/', '_'))).get,
-        test.objectMapper.writeValueAsBytes(message),
+        message,
         test.keyPair.getPublic.asInstanceOf[EdDSAPublicKey],
         routingKey.getBytes,
         test.underTest.serviceName.getBytes
@@ -194,7 +189,9 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
         .withValue(Headers.Signature, "fakesig")
         .withValue(Headers.Origin, "fakeorigin")
 
-      val result = test.underTest.signCommand(context, new Message(routingKey, null))
+      val message = test.objectMapper.writeValueAsBytes(new Message(routingKey, null))
+
+      val result = test.underTest.signCommand(context, message)
 
       result.get(Headers.Origin).get should equal("fakeorigin")
       result.get(Headers.Signature).get should equal("fakesig")
@@ -213,7 +210,7 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
       val message      = new Message(routingKey, data)
       val deliveryBody = test.objectMapper.writeValueAsBytes(message)
 
-      val result = test.underTest.signCommand(context, message)
+      val result = test.underTest.signCommand(context, deliveryBody)
 
       result.get(Headers.Origin).get should equal(test.underTest.serviceName)
       result.get(Headers.Signature) should not be null
@@ -448,8 +445,8 @@ class AuthProviderImplTest extends AsyncWordSpec with Matchers with MockitoSugar
 
       when(test.mockDynamicProvider.getPublicKeys).thenReturn(Map[String, EdDSAPublicKey]())
 
-      val body      = s"""{"routingKey":"system.event","body":null}""".getBytes
-      val context   = Context.empty
+      val body    = s"""{"routingKey":"system.event","body":null}""".getBytes
+      val context = Context.empty
         .withValue(Headers.Origin, "services/javascript-service")
         .withValue(Headers.Signature, "1fwFNGp6_3cuKNV99hmU6bH1ofR2Y0fMLXCWo66EIC65hI2H6AcAA6wa1qMhT48Jh3lChzKFbBAR46cnU4cFCA")
         .withValue(Headers.RoutingKey, "system.event")
