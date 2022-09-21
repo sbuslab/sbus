@@ -1,9 +1,9 @@
 package com.sbuslab.sbus.auth
 
-case class Identity(memberOf: Set[String]) {
+case class Identity(groups: Set[String]) {
   def isMember(group: String): Boolean =
-    memberOf.contains(group)
+    groups.contains(group)
 
-  def isMemberOfAny(groups: Set[String]): Boolean =
-    memberOf.intersect(groups).nonEmpty
+  def isMemberOfAny(others: Set[String]): Boolean =
+    groups.intersect(others).nonEmpty
 }

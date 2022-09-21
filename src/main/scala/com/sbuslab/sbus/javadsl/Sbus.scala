@@ -4,13 +4,15 @@ import java.util.concurrent.CompletableFuture
 import java.util.function.BiFunction
 import scala.compat.java8.FutureConverters._
 
+import com.fasterxml.jackson.databind.ObjectMapper
+
 import com.sbuslab.model.Message
 import com.sbuslab.sbus.{Context, Transport}
 import com.sbuslab.sbus.auth.AuthProvider
 
-class Sbus(transport: Transport, authProvider: AuthProvider) {
+class Sbus(transport: Transport, authProvider: AuthProvider, mapper: ObjectMapper) {
   def sign(routingKey: String, message: Message): Context =
-    authProvider.signCommand(Context.empty.withRoutingKey(routingKey), message);
+    authProvider.signCommand(Context.empty.withRoutingKey(routingKey), mapper.writeValueAsBytes(message));
 
   def request[T](routingKey: String, responseClass: Class[T]): CompletableFuture[T] =
     request(routingKey, null, responseClass, Context.empty)

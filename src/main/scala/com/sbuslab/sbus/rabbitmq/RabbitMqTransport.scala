@@ -211,7 +211,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       context.withValue(Headers.Timestamp, time.toString)
         .withCorrelationId(corrId)
         .withRoutingKey(realRoutingKey),
-      message
+      bytes
     )
 
     val propsBuilder = new BasicProperties().builder()

@@ -1,6 +1,5 @@
 package com.sbuslab.sbus.auth.providers
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.github.tomakehurst.wiremock.WireMockServer
 import com.github.tomakehurst.wiremock.client.WireMock
 import com.github.tomakehurst.wiremock.client.WireMock._
@@ -43,8 +42,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
     val underTest = new ConsulAuthConfigProvider(
       ConfigFactory
         .parseString(config)
-        .resolve(),
-      new ObjectMapper()
+        .resolve()
     )
 
     server.resetAll()
@@ -56,7 +54,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
       val test = TestSuite()
 
       stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
-        okJson("{\"actions\": {\"*\": [\"devs\"], \"webhooks.create-subscription\": [\"users/joe.bloggs\"]}}")
+        okJson("{\"actions\": {\"*\": {\"permissions\": [\"devs\"]}, \"webhooks.create-subscription\": {\"permissions\": [\"users/joe.bloggs\"]}}}")
       ))
 
       val actions = test.underTest.getActions
@@ -71,7 +69,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
       val test = TestSuite()
 
       stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
-        okJson("{\"actions\": {\"*\": [\"devs\"], \"webhooks.create-subscription\": [\"users/joe.bloggs\"]}}")
+        okJson("{\"actions\": {\"*\": {\"permissions\": [\"devs\"]}, \"webhooks.create-subscription\": {\"permissions\": [\"users/joe.bloggs\"]}}}")
       ))
 
       val actions = test.underTest.getActions
@@ -82,7 +80,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
       actions should contain value Action(Set("users/joe.bloggs"))
 
       stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
-        okJson("{\"actions\": {\"*\": [\"devs\"]}}")
+        okJson("{\"actions\": {\"*\": {\"permissions\": [\"devs\"]}}}")
       ))
 
       val actionsAfter = test.underTest.getActions
@@ -99,7 +97,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
       val test = TestSuite()
 
       stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
-        okJson("{\"actions\": {\"*\": [\"devs\"], \"webhooks.create-subscription\": [\"users/joe.bloggs\"]}}")
+        okJson("{\"actions\": {\"*\": {\"permissions\": [\"devs\"]}, \"webhooks.create-subscription\": {\"permissions\": [\"users/joe.bloggs\"]}}}")
       ))
 
       val actions = test.underTest.getActions
@@ -112,7 +110,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
       Thread.sleep(1000)
 
       stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
-        okJson("{\"actions\": {\"*\": [\"devs\"]}}")
+        okJson("{\"actions\": {\"*\": {\"permissions\": [\"devs\"]}}}")
       ))
 
       val actionsAfter = test.underTest.getActions
@@ -142,7 +140,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
 
       stubFor(get(urlPathEqualTo(s"/${test.underTest.identitiesPath}")).willReturn(
         okJson(
-          "[{\"LockIndex\":0,\"Key\":\"rbac/identities/users/joe.bloggs\",\"Flags\":0,\"Value\":\"WwogICJkZXZzIgpd\",\"CreateIndex\":142363424,\"ModifyIndex\":142363424}]"
+          "[{\"LockIndex\":0,\"Key\":\"rbac/identities/users/joe.bloggs\",\"Flags\":0,\"Value\":\"eyAiZ3JvdXBzIjogWyJkZXZzIl0gfQ\",\"CreateIndex\":142363424,\"ModifyIndex\":142363424}]"
         )
       ))
 
@@ -157,7 +155,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
 
       stubFor(get(urlPathEqualTo(s"/${test.underTest.identitiesPath}")).willReturn(
         okJson(
-          "[{\"LockIndex\":0,\"Key\":\"rbac/identities/users/joe.bloggs\",\"Flags\":0,\"Value\":\"WwogICJkZXZzIgpd\",\"CreateIndex\":142363424,\"ModifyIndex\":142363424}]"
+          "[{\"LockIndex\":0,\"Key\":\"rbac/identities/users/joe.bloggs\",\"Flags\":0,\"Value\":\"eyAiZ3JvdXBzIjogWyJkZXZzIl0gfQ\",\"CreateIndex\":142363424,\"ModifyIndex\":142363424}]"
         )
       ))
 
@@ -185,7 +183,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
 
       stubFor(get(urlPathEqualTo(s"/${test.underTest.identitiesPath}")).willReturn(
         okJson(
-          "[{\"LockIndex\":0,\"Key\":\"rbac/identities/users/joe.bloggs\",\"Flags\":0,\"Value\":\"WwogICJkZXZzIgpd\",\"CreateIndex\":142363424,\"ModifyIndex\":142363424}]"
+          "[{\"LockIndex\":0,\"Key\":\"rbac/identities/users/joe.bloggs\",\"Flags\":0,\"Value\":\"eyAiZ3JvdXBzIjogWyJkZXZzIl0gfQ\",\"CreateIndex\":142363424,\"ModifyIndex\":142363424}]"
         )
       ))
 
