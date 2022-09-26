@@ -331,14 +331,14 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
               case Failure(exception) ⇒
                 logs("auth error", subscriptionName, delivery.body, context.correlationId, exception)
                 throw new UnauthorizedError("Sbus message can not be verified", exception)
-              case Success(_) ⇒
+              case Success(_)         ⇒
             }
 
             authProvider.authorizeCommand(context) match {
               case Failure(exception) ⇒
                 logs("auth error", subscriptionName, delivery.body, context.correlationId, exception)
                 throw new UnauthorizedError("Sbus message can not be authenticated", exception)
-              case Success(_) ⇒
+              case Success(_)         ⇒
             }
 
             handler(payload, context)
