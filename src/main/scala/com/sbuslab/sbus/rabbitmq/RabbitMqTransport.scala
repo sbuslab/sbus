@@ -8,6 +8,7 @@ import java.util.concurrent._
 import scala.collection.JavaConverters._
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 import scala.concurrent.duration._
+import scala.util.{Failure, Success}
 
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.event.LoggingReceive
@@ -326,10 +327,18 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
               case body ⇒ deserializeToClass(body, messageClass)
             }).asInstanceOf[T]
 
-            authProvider.verifyCommandSignature(context, delivery.body) flatMap { _ ⇒ authProvider.authorizeCommand(context) } recover {
-              case e ⇒
-                logs("auth error", subscriptionName, delivery.body, context.correlationId, e)
-                throw new UnauthorizedError("Sbus message can not be verified or authorized", e)
+            authProvider.verifyCommandSignature(context, delivery.body) match {
+              case Failure(exception) ⇒
+                logs("auth error", subscriptionName, delivery.body, context.correlationId, exception)
+                throw new UnauthorizedError("Sbus message can not be verified", exception)
+              case Success(_)         ⇒
+            }
+
+            authProvider.authorizeCommand(context) match {
+              case Failure(exception) ⇒
+                logs("auth error", subscriptionName, delivery.body, context.correlationId, exception)
+                throw new UnauthorizedError("Sbus message can not be authenticated", exception)
+              case Success(_)         ⇒
             }
 
             handler(payload, context)
