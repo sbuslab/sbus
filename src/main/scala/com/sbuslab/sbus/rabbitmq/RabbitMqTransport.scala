@@ -34,8 +34,11 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
 
   private val log = Logger(LoggerFactory.getLogger("sbus.rabbitmq"))
 
+  private val recordSBusInteractions =
+    System.getProperties.containsKey("record.sbus")
+
   private val jsonWriter =
-    if (conf.getBoolean("pretty-json")) {
+    if (conf.getBoolean("pretty-json") && !recordSBusInteractions) {
       mapper.writerWithDefaultPrettyPrinter()
     } else {
       mapper.writer()
@@ -522,6 +525,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
     e: Throwable = null
   )(implicit context: Context) {
     if (e != null || (log.underlying.isTraceEnabled && !UnloggedRequests.contains(routingKey))) {
+
       MDC.put("correlation_id", correlationId)
 
       val fields = context.customData
@@ -530,7 +534,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
         MDC.put("meta", mapper.writeValueAsString(fields))
       }
 
-      val msg = s"sbus $prefix $routingKey: ${new String(body.take(LogTrimLength))}"
+      val msg = s"sbus $prefix $routingKey: ${new String(if (recordSBusInteractions) body else body.take(LogTrimLength))}"
 
       e match {
         case null                    ⇒ log.trace(msg)
