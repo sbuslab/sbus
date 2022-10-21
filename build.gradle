@@ -96,7 +96,7 @@ dependencies {
 
     implementation 'net.i2p.crypto:eddsa:0.3.0'
 
-    implementation 'com.fasterxml.jackson.module:jackson-module-scala_2.12:2.13.3'
+    implementation 'com.fasterxml.jackson.module:jackson-module-scala_2.12:2.13.4'
 
     testImplementation 'junit:junit:4.13.1'
     testImplementation 'org.scalatest:scalatest_2.12:3.0.5'
