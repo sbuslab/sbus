@@ -15,8 +15,8 @@ import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveTable, EdDSAPublicKeySpec}
 import com.sbuslab.model.InternalServerError
 import com.sbuslab.sbus.auth.{Action, DynamicAuthConfigProvider, Identity}
 
-class ConsulAuthConfigProvider(
-  conf: Config) extends DynamicAuthConfigProvider {
+
+class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
 
   case class CachedObject(expiredAt: Long, obj: Any)
 
