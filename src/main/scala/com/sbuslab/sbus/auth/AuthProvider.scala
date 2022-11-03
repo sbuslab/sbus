@@ -18,7 +18,9 @@ import org.slf4j.LoggerFactory
 import com.sbuslab.model.{ForbiddenError, InternalServerError}
 import com.sbuslab.sbus.{Context, Headers}
 
+
 trait AuthProvider {
+
   def signCommand(context: Context, cmd: Array[Byte]): Context
 
   def verifyCommandSignature(context: Context, body: Array[Byte]): Try[Unit]
@@ -26,20 +28,20 @@ trait AuthProvider {
   def authorizeCommand(context: Context): Try[Unit]
 }
 
-class AuthProviderImpl(val conf: Config, val dynamicProvider: DynamicAuthConfigProvider)
-    extends AuthProvider {
 
-  val mapper = JsonMapper.builder().addModule(DefaultScalaModule).build()
+class AuthProviderImpl(val conf: Config, val dynamicProvider: DynamicAuthConfigProvider) extends AuthProvider {
 
-  val log: Logger = Logger(LoggerFactory.getLogger("sbus.auth"))
+  private val mapper = JsonMapper.builder().addModule(DefaultScalaModule).build()
+
+  private val log: Logger = Logger(LoggerFactory.getLogger("sbus.auth"))
 
   val spec: EdDSANamedCurveSpec = EdDSANamedCurveTable.getByName("Ed25519")
 
   val serviceName: String = conf.getString("name")
 
-  val localIsRequired: Boolean = conf.getBoolean("required").booleanValue()
+  private val localIsRequired: Boolean = conf.getBoolean("required").booleanValue()
 
-  val privKey = new EdDSAPrivateKey(new EdDSAPrivateKeySpec(
+  private val privKey = new EdDSAPrivateKey(new EdDSAPrivateKeySpec(
     Utils.hexToBytes(
       Option(conf.getString("private-key")).filter(_.nonEmpty)
         .getOrElse(throw new InternalServerError("Missing sbus.auth.private-key configuration!"))
@@ -47,15 +49,15 @@ class AuthProviderImpl(val conf: Config, val dynamicProvider: DynamicAuthConfigP
     spec
   ))
 
-  val localPublicKeys: Map[String, EdDSAPublicKey] = conf.getObject("public-keys").asScala map { case (owner, obj) ⇒
+  private val localPublicKeys: Map[String, EdDSAPublicKey] = conf.getObject("public-keys").asScala map { case (owner, obj) ⇒
     owner → new EdDSAPublicKey(new EdDSAPublicKeySpec(Utils.hexToBytes(obj.atPath("/").getString("/")), spec))
   } toMap
 
-  val localActions: Map[String, Action] = conf.getConfig("rbac").getObject("actions").asScala.toMap.map { case (action, obj) ⇒
+  private val localActions: Map[String, Action] = conf.getConfig("rbac").getObject("actions").asScala.toMap.map { case (action, obj) ⇒
     action → mapper.readValue(obj.render(ConfigRenderOptions.concise().setJson(true)), classOf[Action])
   }
 
-  val localIdentities: Map[String, Identity] = conf.getConfig("rbac").getObject("identities").asScala.toMap.map { case (owner, obj) ⇒
+  private val localIdentities: Map[String, Identity] = conf.getConfig("rbac").getObject("identities").asScala.toMap.map { case (owner, obj) ⇒
     owner → mapper.readValue(obj.render(ConfigRenderOptions.concise().setJson(true)), classOf[Identity])
   }
 

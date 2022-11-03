@@ -29,6 +29,7 @@ import com.sbuslab.model._
 import com.sbuslab.sbus.{Context, Headers, Transport}
 import com.sbuslab.sbus.auth.AuthProvider
 
+
 class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: ActorSystem, mapper: ObjectMapper) extends Transport {
 
   implicit val ec: ExecutionContextExecutor = actorSystem.dispatcher
