@@ -325,25 +325,24 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
           (try {
             logs("<~~~", subscriptionName, delivery.body, context.correlationId)
 
-            val body    = Option(mapper.readTree(delivery.body).get("body"))
-            val payload = (body.orNull match {
-              case null ⇒ null
-              case body ⇒ deserializeToClass(body, messageClass)
-            }).asInstanceOf[T]
-
             authProvider.verifyCommandSignature(context, delivery.body) match {
-              case Failure(exception) ⇒
-                logs("auth error", subscriptionName, delivery.body, context.correlationId, exception)
-                throw new UnauthorizedError("Sbus message can not be verified", exception)
-              case Success(_)         ⇒
+              case Failure(e) ⇒
+                logs("auth error", subscriptionName, delivery.body, context.correlationId, e)
+                throw new ForbiddenError("Sbus message can not be verified", e)
+              case _ ⇒
             }
 
             authProvider.authorizeCommand(context) match {
-              case Failure(exception) ⇒
-                logs("auth error", subscriptionName, delivery.body, context.correlationId, exception)
-                throw new UnauthorizedError("Sbus message can not be authenticated", exception)
-              case Success(_)         ⇒
+              case Failure(e) ⇒
+                logs("auth error", subscriptionName, delivery.body, context.correlationId, e)
+                throw new UnauthorizedError("Sbus message can not be authorized", e)
+              case _ ⇒
             }
+
+            val payload = (mapper.readTree(delivery.body).get("body") match {
+              case null ⇒ null
+              case body ⇒ deserializeToClass(body, messageClass)
+            }).asInstanceOf[T]
 
             handler(payload, context)
           } catch {
