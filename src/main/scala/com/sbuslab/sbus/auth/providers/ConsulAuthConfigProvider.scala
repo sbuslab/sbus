@@ -8,7 +8,7 @@ import scala.reflect.ClassTag
 
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
-import com.typesafe.config.{Config, ConfigFactory, ConfigParseOptions, ConfigRenderOptions}
+import com.typesafe.config.{Config, ConfigFactory, ConfigRenderOptions}
 import com.typesafe.scalalogging.Logger
 import net.i2p.crypto.eddsa.{EdDSAPublicKey, Utils}
 import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveTable, EdDSAPublicKeySpec}
@@ -138,7 +138,7 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
         if (exist == null || exist.expiredAt < System.currentTimeMillis()) {
           try CachedObject(
             System.currentTimeMillis() + cacheDuration.toMillis,
-            ConfigFactory.parseURL(new URL(s"$baseUrl$configPath?raw=true"), ConfigParseOptions.defaults().setAllowMissing(false))
+            ConfigFactory.parseURL(new URL(s"$baseUrl$configPath?raw=true"))
           )
           catch {
             case e: Throwable ⇒
