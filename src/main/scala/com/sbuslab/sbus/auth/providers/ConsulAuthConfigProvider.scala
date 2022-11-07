@@ -8,7 +8,7 @@ import scala.reflect.ClassTag
 
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
-import com.typesafe.config.{Config, ConfigFactory, ConfigParseOptions, ConfigRenderOptions}
+import com.typesafe.config.{Config, ConfigFactory, ConfigRenderOptions}
 import com.typesafe.scalalogging.Logger
 import net.i2p.crypto.eddsa.{EdDSAPublicKey, Utils}
 import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveTable, EdDSAPublicKeySpec}
@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory
 
 import com.sbuslab.model.InternalServerError
 import com.sbuslab.sbus.auth.{Action, DynamicAuthConfigProvider, Identity}
+
 
 class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
 
@@ -36,7 +37,7 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
   val cacheFailureRequired = conf.getBoolean("cache-failure-required")
 
   override def getPublicKeys: Map[String, EdDSAPublicKey] = {
-    def load: Map[String, EdDSAPublicKey] =
+    def load(): Map[String, EdDSAPublicKey] =
       Option(publicKeysPath)
         .filter(_.nonEmpty)
         .flatMap { publicKeysPath ⇒
@@ -63,7 +64,7 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
       "public-keys",
       (_, exist) ⇒ {
         if (exist == null || exist.expiredAt < System.currentTimeMillis()) {
-          try CachedObject(System.currentTimeMillis() + cacheDuration.toMillis, load)
+          try CachedObject(System.currentTimeMillis() + cacheDuration.toMillis, load())
           catch {
             case e: Throwable ⇒
               if (exist == null) {
@@ -84,7 +85,7 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
   override def getActions: Map[String, Action] = getMap[Action]("actions")
 
   override def getIdentities: Map[String, Identity] = {
-    def load: Map[String, Identity] =
+    def load(): Map[String, Identity] =
       Option(identitiesPath)
         .filter(_.nonEmpty)
         .flatMap { identitiesPath ⇒
@@ -110,7 +111,7 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
       "identities",
       (_, exist) ⇒ {
         if (exist == null || exist.expiredAt < System.currentTimeMillis()) {
-          try CachedObject(System.currentTimeMillis() + cacheDuration.toMillis, load)
+          try CachedObject(System.currentTimeMillis() + cacheDuration.toMillis, load())
           catch {
             case e: Throwable ⇒
               if (exist == null) {
@@ -130,15 +131,15 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
 
   override def isRequired: Option[Boolean] = opt[Boolean]("required", _.getBoolean)
 
-  private def getConfig: Config = {
+  private def getConfig: Config =
     cache.compute(
       "config",
       (_, exist) ⇒ {
         if (exist == null || exist.expiredAt < System.currentTimeMillis()) {
           try CachedObject(
-              System.currentTimeMillis() + cacheDuration.toMillis,
-              ConfigFactory.parseURL(new URL(s"$baseUrl$configPath?raw=true"), ConfigParseOptions.defaults().setAllowMissing(false))
-            )
+            System.currentTimeMillis() + cacheDuration.toMillis,
+            ConfigFactory.parseURL(new URL(s"$baseUrl$configPath?raw=true"))
+          )
           catch {
             case e: Throwable ⇒
               if (exist == null) {
@@ -154,7 +155,6 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
         }
       }
     ).obj.asInstanceOf[Config]
-  }
 
   private def opt[T](path: String, getter: Config ⇒ String ⇒ T): Option[T] = {
     val config = getConfig
@@ -168,9 +168,8 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
   private def getMap[T](path: String)(implicit classTag: ClassTag[T]): Map[String, T] = {
     val config = getConfig
     if (config.hasPath(path)) {
-      config.getObject(path).asScala.toMap.map {
-        case (key, obj) ⇒
-          key → mapper.readValue(obj.render(ConfigRenderOptions.concise().setJson(true)), classTag.runtimeClass).asInstanceOf[T]
+      config.getObject(path).asScala.toMap mapValues { obj ⇒
+        mapper.readValue(obj.render(ConfigRenderOptions.concise().setJson(true)), classTag.runtimeClass).asInstanceOf[T]
       }
     } else {
       Map.empty

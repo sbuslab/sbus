@@ -4,6 +4,7 @@ import com.github.tomakehurst.wiremock.WireMockServer
 import com.github.tomakehurst.wiremock.client.WireMock
 import com.github.tomakehurst.wiremock.client.WireMock._
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig
+import com.github.tomakehurst.wiremock.http.Fault
 import com.typesafe.config.ConfigFactory
 import net.i2p.crypto.eddsa.{EdDSAPublicKey, KeyPairGenerator}
 import org.apache.commons.codec.binary.{Base64, Hex}
@@ -300,6 +301,10 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
 
     "successfully default required config when error in consul and recovers" in {
       val test = TestSuite()
+
+      stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
+        aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)
+      ))
 
       val required = test.underTest.isRequired
 

@@ -71,11 +71,9 @@ class AuthProviderImpl(val conf: Config, val dynamicProvider: DynamicAuthConfigP
       if (origin == serviceName) {
         success
       } else {
-        val actions = getActions
-
-        actions.get(routingKey).orElse(actions.get("*")) match {
+        getAction(routingKey).orElse(getAction("*")) match {
           case Some(action) ⇒
-            val identity = getIdentities.getOrElse(origin, Identity(Set()))
+            val identity = getIdentity(origin).getOrElse(Identity(Set.empty))
 
             val authorized =
               identity.isMemberOfAny(action.permissions) || action.permissions.contains(origin) || action.permissions.contains("*")
@@ -106,7 +104,7 @@ class AuthProviderImpl(val conf: Config, val dynamicProvider: DynamicAuthConfigP
       origin     ← context.get(Headers.Origin)
       signature  ← context.get(Headers.Signature)
       routingKey ← context.get(Headers.RoutingKey)
-      pubKey     ← getPublicKeys.get(origin)
+      pubKey     ← getPublicKey(origin)
     } yield {
       val edDSAEngine = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
       edDSAEngine.initVerify(pubKey)
@@ -128,8 +126,8 @@ class AuthProviderImpl(val conf: Config, val dynamicProvider: DynamicAuthConfigP
       )
     }
 
-  override def signCommand(context: Context, cmd: Array[Byte]): Context = {
-    if (context.get(Headers.ProxyPass).exists(_.toBoolean)) {
+  override def signCommand(context: Context, cmd: Array[Byte]): Context =
+    if (context.get(Headers.ProxyPass).contains("true")) {
       context
     } else {
       val edDSAEngine = new EdDSAEngine(MessageDigest.getInstance(spec.getHashAlgorithm))
@@ -141,28 +139,19 @@ class AuthProviderImpl(val conf: Config, val dynamicProvider: DynamicAuthConfigP
 
       val signature = Base64.getUrlEncoder.encodeToString(edDSAEngine.sign())
 
-      log.debug(s"Signing sbus cmd: ${context.routingKey}, origin $serviceName")
-
       context
         .withValue(Headers.Origin, serviceName)
         .withValue(Headers.Signature, signature)
     }
-  }
 
-  private def addMessageHeadersToEngine(context: Context, edDSAEngine: EdDSAEngine): Unit = {
-    context.get(Headers.Timestamp) foreach { timestamp ⇒ edDSAEngine.update(timestamp.getBytes) }
-    context.get(Headers.RoutingKey) foreach { value ⇒ edDSAEngine.update(value.getBytes) }
-    context.get(Headers.CorrelationId) foreach { value ⇒ edDSAEngine.update(value.getBytes) }
-  }
+  private def getPublicKey(origin: String): Option[EdDSAPublicKey] =
+    dynamicProvider.getPublicKeys.get(origin).orElse(localPublicKeys.get(origin))
 
-  private def getPublicKeys: Map[String, EdDSAPublicKey] =
-    localPublicKeys ++ dynamicProvider.getPublicKeys
+  private def getAction(routingKey: String): Option[Action] =
+    dynamicProvider.getActions.get(routingKey).orElse(localActions.get(routingKey))
 
-  private def getActions: Map[String, Action] =
-    localActions ++ dynamicProvider.getActions
-
-  private def getIdentities: Map[String, Identity] =
-    localIdentities ++ dynamicProvider.getIdentities
+  private def getIdentity(origin: String): Option[Identity] =
+    dynamicProvider.getIdentities.get(origin).orElse(localIdentities.get(origin))
 
   private def isRequired: Boolean =
     dynamicProvider.isRequired.getOrElse(localIsRequired)
@@ -173,10 +162,11 @@ class AuthProviderImpl(val conf: Config, val dynamicProvider: DynamicAuthConfigP
     if (isRequired) {
       Failure(new ForbiddenError(reason))
     } else {
-      Success {}
+      success
     }
   }
 }
+
 
 class NoopAuthProvider extends AuthProvider {
   private val success = Success {}
