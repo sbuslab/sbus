@@ -8,33 +8,37 @@ import com.typesafe.config.ConfigFactory
 import net.i2p.crypto.eddsa.{EdDSAPublicKey, KeyPairGenerator}
 import org.apache.commons.codec.binary.{Base64, Hex}
 import org.junit.runner.RunWith
-import org.scalatest.{AsyncWordSpec, BeforeAndAfterEach, Matchers}
+import org.scalatest.{AsyncWordSpec, BeforeAndAfterAll, BeforeAndAfterEach, Matchers}
 import org.scalatest.junit.JUnitRunner
 
 import com.sbuslab.sbus.auth.{Action, Identity}
 
 @RunWith(classOf[JUnitRunner])
-class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with BeforeAndAfterEach {
+class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with BeforeAndAfterEach with BeforeAndAfterAll {
 
   val Host   = "localhost"
   val Port   = 4893
   val server = new WireMockServer(wireMockConfig().port(Port))
 
-  override def beforeEach(): Unit = {
+  override def beforeAll(): Unit = {
     server.start()
     WireMock.configureFor(Host, Port)
   }
 
   override def afterEach(): Unit =
+    server.resetAll()
+
+  override def afterAll(): Unit =
     server.stop()
 
   def defaultConfig =
     s"""{
-          | base-url = "http://localhost:4893/"
+          | base-url = "http://$Host:$Port/"
           | public-keys-path = "services/keys/public"
           | config-path = "services/auth/config/test-service"
           | identities-path = "rbac/identities"
           | cache-duration = "1 second"
+          | cache-failure-required = false
           |}""".stripMargin
 
   case class TestSuite(config: String = defaultConfig) {
@@ -54,7 +58,9 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
       val test = TestSuite()
 
       stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
-        okJson("{\"actions\": {\"*\": {\"permissions\": [\"devs\"]}, \"webhooks.create-subscription\": {\"permissions\": [\"users/joe.bloggs\"]}}}")
+        okJson(
+          "{\"actions\": {\"*\": {\"permissions\": [\"devs\"]}, \"webhooks.create-subscription\": {\"permissions\": [\"users/joe.bloggs\"]}}}"
+        )
       ))
 
       val actions = test.underTest.getActions
@@ -69,7 +75,9 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
       val test = TestSuite()
 
       stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
-        okJson("{\"actions\": {\"*\": {\"permissions\": [\"devs\"]}, \"webhooks.create-subscription\": {\"permissions\": [\"users/joe.bloggs\"]}}}")
+        okJson(
+          "{\"actions\": {\"*\": {\"permissions\": [\"devs\"]}, \"webhooks.create-subscription\": {\"permissions\": [\"users/joe.bloggs\"]}}}"
+        )
       ))
 
       val actions = test.underTest.getActions
@@ -97,7 +105,9 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
       val test = TestSuite()
 
       stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
-        okJson("{\"actions\": {\"*\": {\"permissions\": [\"devs\"]}, \"webhooks.create-subscription\": {\"permissions\": [\"users/joe.bloggs\"]}}}")
+        okJson(
+          "{\"actions\": {\"*\": {\"permissions\": [\"devs\"]}, \"webhooks.create-subscription\": {\"permissions\": [\"users/joe.bloggs\"]}}}"
+        )
       ))
 
       val actions = test.underTest.getActions
@@ -129,6 +139,39 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
       stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
         okJson("{}")
       ))
+
+      val actions = test.underTest.getActions
+
+      actions should be(empty)
+    }
+
+    "successfully default actions when error in consul" in {
+      val test = TestSuite()
+
+      stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
+        serverError()
+      ))
+
+      val actions = test.underTest.getActions
+
+      actions should be(empty)
+
+      stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
+        okJson(
+          "{\"actions\": {\"*\": {\"permissions\": [\"devs\"]}, \"webhooks.create-subscription\": {\"permissions\": [\"users/joe.bloggs\"]}}}"
+        )
+      ))
+
+      val actionsAfter = test.underTest.getActions
+
+      actionsAfter should contain key "*"
+      actionsAfter should contain key "webhooks.create-subscription"
+      actionsAfter should contain value Action(Set("devs"))
+      actionsAfter should contain value Action(Set("users/joe.bloggs"))
+    }
+
+    "successfully default actions when no network route" in {
+      val test = TestSuite()
 
       val actions = test.underTest.getActions
 
@@ -208,6 +251,41 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
       identitiesAfter should not(contain value Identity(Set("devs")))
     }
 
+    "successfully default identities when error in consul" in {
+      val test = TestSuite()
+
+      stubFor(get(urlPathEqualTo(s"/${test.underTest.identitiesPath}")).willReturn(
+        serverError()
+      ))
+
+      val actions = test.underTest.getIdentities
+
+      actions should be(empty)
+    }
+
+    "successfully default identities when error in consul and recovers" in {
+      val test = TestSuite()
+
+      stubFor(get(urlPathEqualTo(s"/${test.underTest.identitiesPath}")).willReturn(
+        serverError()
+      ))
+
+      val actions = test.underTest.getIdentities
+
+      actions should be(empty)
+
+      stubFor(get(urlPathEqualTo(s"/${test.underTest.identitiesPath}")).willReturn(
+        okJson(
+          "[{\"LockIndex\":0,\"Key\":\"rbac/identities/users/joe.bloggs\",\"Flags\":0,\"Value\":\"eyAiZ3JvdXBzIjogWyJkZXZzIl0gfQ\",\"CreateIndex\":142363424,\"ModifyIndex\":142363424}]"
+        )
+      ))
+
+      val identitiesAfter = test.underTest.getIdentities
+
+      identitiesAfter should contain key "users/joe.bloggs"
+      identitiesAfter should contain value Identity(Set("devs"))
+    }
+
     "successfully fetch required config" in {
       val test = TestSuite()
 
@@ -218,6 +296,22 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
       val required = test.underTest.isRequired
 
       required should equal(Some(false))
+    }
+
+    "successfully default required config when error in consul and recovers" in {
+      val test = TestSuite()
+
+      val required = test.underTest.isRequired
+
+      required should equal(Some(false))
+
+      stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
+        okJson("{\"required\": true}")
+      ))
+
+      val afterRequired = test.underTest.isRequired
+
+      afterRequired should equal(Some(true))
     }
 
     "successfully fetch cached required config" in {
@@ -314,7 +408,6 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
       val responseBody =
         s"""[{"LockIndex":0,"Key":"services/keys/public/users/joe.bloggs","Flags":0,"Value":"$publicKeyEncoded","CreateIndex":31349461,"ModifyIndex":31349461}]"""
 
-
       stubFor(get(urlPathEqualTo(s"/${test.underTest.publicKeysPath}")).willReturn(
         okJson(
           responseBody
@@ -375,7 +468,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
 
       verify(WireMock.exactly(2), getRequestedFor(urlPathEqualTo(s"/${test.underTest.publicKeysPath}")))
 
-      publicKeysAfter should not (contain key "users/joe.bloggs")
+      publicKeysAfter should not(contain key "users/joe.bloggs")
     }
 
   }
