@@ -141,9 +141,6 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
             ConfigFactory.parseURL(new URL(s"$baseUrl$configPath?raw=true"))
           )
           catch {
-            case _: java.io.FileNotFoundException ⇒
-              CachedObject(System.currentTimeMillis() + cacheDuration.toMillis, ConfigFactory.parseMap(Map("required" → cacheFailureRequired).asJava))
-
             case e: Throwable ⇒
               if (exist == null) {
                 log.error("Couldn't update cached object from consul, defaulting values with validation off", e)

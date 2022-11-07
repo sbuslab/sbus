@@ -299,11 +299,23 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
       required should equal(Some(false))
     }
 
+    "successfully handle required config when 404 in consul" in {
+      val test = TestSuite()
+
+      stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
+        notFound()
+      ))
+
+      val required = test.underTest.isRequired
+
+      required should equal(None)
+    }
+
     "successfully default required config when error in consul and recovers" in {
       val test = TestSuite()
 
       stubFor(get(urlPathEqualTo(s"/${test.underTest.configPath}")).willReturn(
-        aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)
+        aResponse().withFault(Fault.EMPTY_RESPONSE)
       ))
 
       val required = test.underTest.isRequired
