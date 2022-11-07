@@ -38,6 +38,7 @@ class ConsulAuthConfigProviderTest extends AsyncWordSpec with Matchers with Befo
           | config-path = "services/auth/config/test-service"
           | identities-path = "rbac/identities"
           | cache-duration = "1 second"
+          | cache-failure-required = false
           |}""".stripMargin
 
   case class TestSuite(config: String = defaultConfig) {

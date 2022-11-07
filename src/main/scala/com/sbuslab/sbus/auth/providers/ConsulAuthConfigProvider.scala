@@ -17,7 +17,6 @@ import org.slf4j.LoggerFactory
 import com.sbuslab.model.InternalServerError
 import com.sbuslab.sbus.auth.{Action, DynamicAuthConfigProvider, Identity}
 
-
 class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
 
   val log: Logger = Logger(LoggerFactory.getLogger("sbus.auth"))
@@ -29,11 +28,12 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
   val cache = new ConcurrentHashMap[String, CachedObject]()
   val spec  = EdDSANamedCurveTable.getByName("Ed25519")
 
-  val baseUrl        = conf.getString("base-url")
-  val publicKeysPath = conf.getString("public-keys-path")
-  val identitiesPath = conf.getString("identities-path")
-  val configPath     = conf.getString("config-path")
-  val cacheDuration  = conf.getDuration("cache-duration")
+  val baseUrl              = conf.getString("base-url")
+  val publicKeysPath       = conf.getString("public-keys-path")
+  val identitiesPath       = conf.getString("identities-path")
+  val configPath           = conf.getString("config-path")
+  val cacheDuration        = conf.getDuration("cache-duration")
+  val cacheFailureRequired = conf.getBoolean("cache-failure-required")
 
   override def getPublicKeys: Map[String, EdDSAPublicKey] = {
     def load: Map[String, EdDSAPublicKey] =
@@ -143,7 +143,7 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
             case e: Throwable ⇒
               if (exist == null) {
                 log.error("Couldn't update cached object from consul, defaulting values with validation off", e)
-                CachedObject(0, ConfigFactory.parseMap(Map("required" → false).asJava))
+                CachedObject(0, ConfigFactory.parseMap(Map("required" → cacheFailureRequired).asJava))
               } else {
                 log.error("Couldn't update cached object from consul, using expired values", e)
                 exist
