@@ -335,7 +335,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
             authProvider.authorizeCommand(context) match {
               case Failure(e) ⇒
                 logs("auth error", subscriptionName, delivery.body, context.correlationId, e)
-                throw new UnauthorizedError("Sbus message can not be authorized", e)
+                throw new ForbiddenError("Sbus message can not be authorized", e)
               case _ ⇒
             }
 
