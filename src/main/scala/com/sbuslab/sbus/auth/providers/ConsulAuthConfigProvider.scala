@@ -33,12 +33,7 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
   val identitiesPath       = conf.getString("identities-path")
   val configPath           = conf.getString("config-path")
   val cacheDuration        = conf.getDuration("cache-duration")
-  val cacheFailureRequired = {
-    if (conf.hasPath("cache-failure-required"))
-      conf.getBoolean("cache-failure-required")
-    else
-      true
-  }
+  val cacheFailureRequired = conf.getBoolean("cache-failure-required")
 
   override def getPublicKeys: Map[String, EdDSAPublicKey] = {
     def load: Map[String, EdDSAPublicKey] =
