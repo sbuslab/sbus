@@ -8,15 +8,19 @@ import scala.reflect.ClassTag
 
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
-import com.typesafe.config.{Config, ConfigFactory, ConfigRenderOptions}
+import com.typesafe.config.{Config, ConfigFactory, ConfigParseOptions, ConfigRenderOptions}
+import com.typesafe.scalalogging.Logger
 import net.i2p.crypto.eddsa.{EdDSAPublicKey, Utils}
 import net.i2p.crypto.eddsa.spec.{EdDSANamedCurveTable, EdDSAPublicKeySpec}
+import org.slf4j.LoggerFactory
 
 import com.sbuslab.model.InternalServerError
 import com.sbuslab.sbus.auth.{Action, DynamicAuthConfigProvider, Identity}
 
 
 class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
+
+  val log: Logger = Logger(LoggerFactory.getLogger("sbus.auth"))
 
   case class CachedObject(expiredAt: Long, obj: Any)
 
@@ -36,15 +40,10 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
       Option(publicKeysPath)
         .filter(_.nonEmpty)
         .flatMap { publicKeysPath ⇒
-          val resp =
-            try new URL(s"$baseUrl$publicKeysPath?recurse=true").openConnection().asInstanceOf[HttpURLConnection]
-            catch {
-              case e: Throwable ⇒
-                throw new InternalServerError(s"Sbus auth: couldn't fetch public keys from $publicKeysPath endpoint: ${e.getMessage}", e)
-            }
+          val resp = new URL(s"$baseUrl$publicKeysPath?recurse=true").openConnection().asInstanceOf[HttpURLConnection]
 
           if (resp.getResponseCode == 200) {
-            Some(mapper.readTree(resp.getInputStream).elements().asScala.map { node ⇒
+            Option(mapper.readTree(resp.getInputStream).elements().asScala.map { node ⇒
               val pubKey = mapper.readTree(Base64.getDecoder.decode(node.path("Value").asText())).path("publicKey").asText()
 
               node.path("Key").asText().stripPrefix(s"$publicKeysPath").stripPrefix("/") → new EdDSAPublicKey(new EdDSAPublicKeySpec(
@@ -53,7 +52,9 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
               ))
             }.toMap)
           } else {
-            None
+            throw new InternalServerError(
+              s"Sbus auth: couldn't fetch public keys from $publicKeysPath endpoint with status code ${resp.getResponseCode}"
+            )
           }
 
         } getOrElse Map.empty
@@ -62,7 +63,17 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
       "public-keys",
       (_, exist) ⇒ {
         if (exist == null || exist.expiredAt < System.currentTimeMillis()) {
-          CachedObject(System.currentTimeMillis() + cacheDuration.toMillis, load)
+          try CachedObject(System.currentTimeMillis() + cacheDuration.toMillis, load)
+          catch {
+            case e: Throwable ⇒
+              if (exist == null) {
+                log.error("Couldn't update cached object from consul, defaulting values", e)
+                CachedObject(0, Map.empty[String, EdDSAPublicKey])
+              } else {
+                log.error("Couldn't update cached object from consul, using expired values", e)
+                exist
+              }
+          }
         } else {
           exist
         }
@@ -78,21 +89,19 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
         .filter(_.nonEmpty)
         .flatMap { identitiesPath ⇒
           val resp =
-            try new URL(s"$baseUrl$identitiesPath?recurse=true").openConnection().asInstanceOf[HttpURLConnection]
-            catch {
-              case e: Throwable ⇒
-                throw new InternalServerError(s"Sbus auth: couldn't fetch identities from $identitiesPath endpoint: ${e.getMessage}", e)
-            }
+            new URL(s"$baseUrl$identitiesPath?recurse=true").openConnection().asInstanceOf[HttpURLConnection]
 
           if (resp.getResponseCode == 200) {
-            Some(mapper.readTree(resp.getInputStream).elements().asScala.map { node ⇒
+            Option(mapper.readTree(resp.getInputStream).elements().asScala.map { node ⇒
               val identity =
                 mapper.readValue(Base64.getDecoder.decode(node.path("Value").asText()), classOf[Identity])
 
               node.path("Key").asText().stripPrefix(s"$identitiesPath").stripPrefix("/") → identity
             }.toMap)
           } else {
-            None
+            throw new InternalServerError(
+              s"Sbus auth: couldn't fetch identities from $identitiesPath endpoint with status code ${resp.getResponseCode}"
+            )
           }
 
         } getOrElse Map.empty
@@ -101,7 +110,17 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
       "identities",
       (_, exist) ⇒ {
         if (exist == null || exist.expiredAt < System.currentTimeMillis()) {
-          CachedObject(System.currentTimeMillis() + cacheDuration.toMillis, load)
+          try CachedObject(System.currentTimeMillis() + cacheDuration.toMillis, load)
+          catch {
+            case e: Throwable ⇒
+              if (exist == null) {
+                log.error("Couldn't update cached object from consul, defaulting values", e)
+                CachedObject(0, Map.empty[String, Identity])
+              } else {
+                log.error("Couldn't update cached object from consul, using expired values", e)
+                exist
+              }
+          }
         } else {
           exist
         }
@@ -116,10 +135,20 @@ class ConsulAuthConfigProvider(conf: Config) extends DynamicAuthConfigProvider {
       "config",
       (_, exist) ⇒ {
         if (exist == null || exist.expiredAt < System.currentTimeMillis()) {
-          CachedObject(
-            System.currentTimeMillis() + cacheDuration.toMillis,
-            ConfigFactory.parseURL(new URL(s"$baseUrl$configPath?raw=true"))
-          )
+          try CachedObject(
+              System.currentTimeMillis() + cacheDuration.toMillis,
+              ConfigFactory.parseURL(new URL(s"$baseUrl$configPath?raw=true"), ConfigParseOptions.defaults().setAllowMissing(false))
+            )
+          catch {
+            case e: Throwable ⇒
+              if (exist == null) {
+                log.error("Couldn't update cached object from consul, defaulting values with validation off", e)
+                CachedObject(0, ConfigFactory.parseMap(Map("required" → false).asJava))
+              } else {
+                log.error("Couldn't update cached object from consul, using expired values", e)
+                exist
+              }
+          }
         } else {
           exist
         }
