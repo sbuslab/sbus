@@ -17,4 +17,5 @@ object Headers {
   val UserId           = "userId"
   val Auth             = "auth"
   val ProxyPass        = "proxy-pass"
+  val ContextData      = "context-data"
 }

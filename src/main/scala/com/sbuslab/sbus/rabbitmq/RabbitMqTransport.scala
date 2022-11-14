@@ -239,7 +239,8 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
         Headers.UserId           → ctx.get(Headers.UserId).orNull,
         Headers.Auth             → ctx.get(Headers.Auth).orNull,
         Headers.Origin           → ctx.get(Headers.Origin).orNull,
-        Headers.Signature        → ctx.get(Headers.Signature).orNull
+        Headers.Signature        → ctx.get(Headers.Signature).orNull,
+        Headers.ContextData      → jsonWriter.writeValueAsString(ctx.contextData),
       ).filter(_._2 != null).mapValues(_.toString.asInstanceOf[Object]).asJava)
 
     if (corrId != "sbus:ping") {
@@ -313,7 +314,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
 
     val processor = new RpcServer.IProcessor {
       def process(delivery: Amqp.Delivery): Future[RpcServer.ProcessResult] = {
-        implicit val context: Context = Context.from(delivery)
+        implicit val context: Context = Context.from(delivery, mapper)
 
         if (context.correlationId == "sbus:ping") {
           val pingAt = mapper.readTree(delivery.body).path("body").path("ping").asLong(0)
@@ -422,7 +423,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       }
 
       def onFailure(delivery: Amqp.Delivery, e: Throwable): RpcServer.ProcessResult = {
-        implicit val context: Context = Context.from(delivery)
+        implicit val context: Context = Context.from(delivery, mapper)
 
         logs("error", subscriptionName, e.toString.getBytes, context.correlationId, e)
 
