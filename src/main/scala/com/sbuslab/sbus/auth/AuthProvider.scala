@@ -157,7 +157,7 @@ class AuthProviderImpl(val conf: Config, val dynamicProvider: DynamicAuthConfigP
     dynamicProvider.isRequired.getOrElse(localIsRequired)
 
   private def failure(reason: String): Try[Unit] = {
-    log.warn(reason)
+    log.trace(reason)
 
     if (isRequired) {
       Failure(new ForbiddenError(reason))
