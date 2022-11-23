@@ -239,7 +239,10 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
         Headers.UserId           → ctx.get(Headers.UserId).orNull,
         Headers.Auth             → ctx.get(Headers.Auth).orNull,
         Headers.Origin           → ctx.get(Headers.Origin).orNull,
-        Headers.Signature        → ctx.get(Headers.Signature).orNull
+        Headers.Signature        → ctx.get(Headers.Signature).orNull,
+        Headers.PortfolioId      → ctx.get(Headers.PortfolioId).orNull,
+        Headers.OrganizationId   → ctx.get(Headers.OrganizationId).orNull,
+        Headers.Exchange         → ctx.get(Headers.Exchange).orNull,
       ).filter(_._2 != null).mapValues(_.toString.asInstanceOf[Object]).asJava)
 
     if (corrId != "sbus:ping") {
@@ -313,7 +316,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
 
     val processor = new RpcServer.IProcessor {
       def process(delivery: Amqp.Delivery): Future[RpcServer.ProcessResult] = {
-        implicit val context: Context = Context.from(delivery)
+        implicit val context: Context = makeContext(delivery)
 
         if (context.correlationId == "sbus:ping") {
           val pingAt = mapper.readTree(delivery.body).path("body").path("ping").asLong(0)
@@ -422,7 +425,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       }
 
       def onFailure(delivery: Amqp.Delivery, e: Throwable): RpcServer.ProcessResult = {
-        implicit val context: Context = Context.from(delivery)
+        implicit val context: Context = makeContext(delivery)
 
         logs("error", subscriptionName, e.toString.getBytes, context.correlationId, e)
 
@@ -524,6 +527,24 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
           throw new BadRequestError(s"Can't deserialize ${node.toString.take(2048)} to $responseClass: ${e.getMessage}", e)
       }
     }
+  }
+
+  private def makeContext(delivery: Amqp.Delivery): Context = {
+    val data = Map.newBuilder[String, String]
+    data += Headers.MessageId  → Option(delivery.properties.getMessageId).getOrElse(UUID.randomUUID().toString)
+    data += Headers.RoutingKey → delivery.envelope.getRoutingKey
+
+    val headers = delivery.properties.getHeaders
+
+    if (headers != null) {
+      data ++= headers.asScala.filterKeys(Context.allowedHeaders).filter(_._2 != null).mapValues(_.toString)
+
+      Option(headers.get(Headers.ExpiredAt)) foreach { expiresAt ⇒
+        data += Headers.Timeout → (expiresAt.toString.toLong - System.currentTimeMillis()).max(1).toString
+      }
+    }
+
+    Context(data.result().filter(_._2 != null))
   }
 
   private def logs(

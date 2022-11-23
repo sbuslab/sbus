@@ -1,11 +1,9 @@
 package com.sbuslab.sbus
 
 import java.util.UUID
-import scala.collection.JavaConverters._
 import scala.concurrent.duration.{Duration, TimeUnit}
 
 import akka.util.Timeout
-import com.github.sstone.amqp.Amqp
 
 case class Context(data: Map[String, String] = Map.empty) {
 
@@ -52,7 +50,7 @@ object Context {
 
   private val emptyContext = Context()
 
-  private val allowedHeaders = Set(
+  val allowedHeaders = Set(
     Headers.Timeout,
     Headers.RoutingKey,
     Headers.CorrelationId,
@@ -65,11 +63,14 @@ object Context {
     Headers.Auth,
     Headers.UserAgent,
     Headers.Origin,
-    Headers.Signature
+    Headers.Signature,
+    Headers.PortfolioId,
+    Headers.OrganizationId,
+    Headers.Exchange
   )
 
   private val notLoggedHeaders =
-    allowedHeaders -- Set(Headers.Ip, Headers.UserId, Headers.Auth, Headers.Origin)
+    allowedHeaders -- Set(Headers.Ip, Headers.UserId, Headers.Auth, Headers.Origin, Headers.PortfolioId, Headers.OrganizationId, Headers.Exchange)
 
   def empty                         = emptyContext
   def withNewCorrelationId()        = emptyContext.withNewCorrelationId()
@@ -81,21 +82,4 @@ object Context {
 
   def withRetries(max: Int) = Context().withRetries(max)
 
-  def from(delivery: Amqp.Delivery): Context = {
-    val data = Map.newBuilder[String, String]
-    data += Headers.MessageId  → Option(delivery.properties.getMessageId).getOrElse(UUID.randomUUID().toString)
-    data += Headers.RoutingKey → delivery.envelope.getRoutingKey
-
-    val headers = delivery.properties.getHeaders
-
-    if (headers != null) {
-      data ++= headers.asScala.filterKeys(allowedHeaders).filter(_._2 != null).mapValues(_.toString)
-
-      Option(headers.get(Headers.ExpiredAt)) foreach { expiresAt ⇒
-        data += Headers.Timeout → (expiresAt.toString.toLong - System.currentTimeMillis()).max(1).toString
-      }
-    }
-
-    Context(data.result().filter(_._2 != null))
-  }
 }
