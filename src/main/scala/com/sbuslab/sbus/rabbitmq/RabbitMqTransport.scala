@@ -8,7 +8,7 @@ import java.util.concurrent._
 import scala.collection.JavaConverters._
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 import scala.concurrent.duration._
-import scala.util.{Failure, Success}
+import scala.util.Failure
 
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.event.LoggingReceive
@@ -227,20 +227,14 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
         case _ if responseClass != null ⇒ defaultTimeout.duration.toMillis.toString
         case _                          ⇒ null
       })
-      .headers(Map(
+      .headers((ctx.customData ++ Map(
         Headers.CorrelationId    → ctx.correlationId,
         Headers.RoutingKey       → ctx.routingKey,
-        // commands retryable by default
-        Headers.RetryAttemptsMax → ctx.maxRetries.getOrElse(if (responseClass != null) null else DefaultCommandRetries),
+        Headers.RetryAttemptsMax → ctx.maxRetries.getOrElse(if (responseClass != null) null else DefaultCommandRetries), // commands retryable by default
         Headers.ExpiredAt        → ctx.timeout.map(_ + time).getOrElse(null),
         Headers.Timestamp        → ctx.get(Headers.Timestamp).orNull,
-        Headers.Ip               → ctx.ip,
-        Headers.UserAgent        → ctx.userAgent,
-        Headers.UserId           → ctx.get(Headers.UserId).orNull,
-        Headers.Auth             → ctx.get(Headers.Auth).orNull,
-        Headers.Origin           → ctx.get(Headers.Origin).orNull,
-        Headers.Signature        → ctx.get(Headers.Signature).orNull
-      ).filter(_._2 != null).mapValues(_.toString.asInstanceOf[Object]).asJava)
+        Headers.Signature        → ctx.get(Headers.Signature).orNull,
+      )).filter(_._2 != null).mapValues(_.toString.asInstanceOf[Object]).asJava)
 
     if (corrId != "sbus:ping") {
       logs("~~~>", realRoutingKey, bytes, corrId)
@@ -313,7 +307,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
 
     val processor = new RpcServer.IProcessor {
       def process(delivery: Amqp.Delivery): Future[RpcServer.ProcessResult] = {
-        implicit val context: Context = Context.from(delivery)
+        implicit val context: Context = makeContext(delivery)
 
         if (context.correlationId == "sbus:ping") {
           val pingAt = mapper.readTree(delivery.body).path("body").path("ping").asLong(0)
@@ -422,7 +416,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       }
 
       def onFailure(delivery: Amqp.Delivery, e: Throwable): RpcServer.ProcessResult = {
-        implicit val context: Context = Context.from(delivery)
+        implicit val context: Context = makeContext(delivery)
 
         logs("error", subscriptionName, e.toString.getBytes, context.correlationId, e)
 
@@ -453,7 +447,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
       routingKeys = channel.routingKeys.getOrElse(List(subscriptionName))
         .flatMap(rtKey ⇒
           List(rtKey, channel.queueNameFormat.format(rtKey))
-        ) // add routingKey with channel prefix for handlling retried messages
+        ) // add routingKey with channel prefix for handling retried messages
         .filter(_.nonEmpty)
         .toSet
     ))
@@ -524,6 +518,24 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
           throw new BadRequestError(s"Can't deserialize ${node.toString.take(2048)} to $responseClass: ${e.getMessage}", e)
       }
     }
+  }
+
+  private def makeContext(delivery: Amqp.Delivery): Context = {
+    val data = Map.newBuilder[String, String]
+    val headers = delivery.properties.getHeaders
+
+    if (headers != null) {
+      data ++= headers.asScala.filter(_._2 != null).mapValues(_.toString)
+
+      Option(headers.get(Headers.ExpiredAt)) foreach { expiresAt ⇒
+        data += Headers.Timeout → (expiresAt.toString.toLong - System.currentTimeMillis()).max(1).toString
+      }
+    }
+
+    data += Headers.MessageId → Option(delivery.properties.getMessageId).getOrElse(UUID.randomUUID().toString)
+    data += Headers.RoutingKey → delivery.envelope.getRoutingKey
+
+    Context(data.result())
   }
 
   private def logs(

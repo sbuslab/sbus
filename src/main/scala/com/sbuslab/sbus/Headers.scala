@@ -17,4 +17,7 @@ object Headers {
   val UserId           = "userId"
   val Auth             = "auth"
   val ProxyPass        = "proxy-pass"
+  val PortfolioId      = "portfolioId"
+  val OrganizationId   = "organizationId"
+  val Exchange         = "exchange"
 }
