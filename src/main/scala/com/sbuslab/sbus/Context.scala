@@ -31,6 +31,9 @@ case class Context(data: Map[String, String] = Map.empty) {
       copy(data = data + (key → value))
     }
 
+  def withValues(values: Map[String, String]) =
+    copy(data = data ++ values)
+
   def withNewCorrelationId(): Context                   = withCorrelationId(UUID.randomUUID().toString)
   def withCorrelationId(id: String): Context            = withValue(Headers.CorrelationId, id)
   def withTimeout(to: Duration): Context                = withTimeout(to.toMillis)
@@ -43,14 +46,14 @@ case class Context(data: Map[String, String] = Map.empty) {
   def withOrigin(origin: String): Context               = withValue(Headers.Origin, origin)
   def withProxyPass: Context                            = withValue(Headers.ProxyPass, true)
 
-  def customData = data -- Context.notLoggedHeaders
+  def customData = data -- Context.defaultHeaders
 }
 
 object Context {
 
   private val emptyContext = Context()
 
-  val allowedHeaders = Set(
+  val defaultHeaders = Set(
     Headers.Timeout,
     Headers.RoutingKey,
     Headers.CorrelationId,
@@ -58,19 +61,8 @@ object Context {
     Headers.RetryAttemptNr,
     Headers.Timestamp,
     Headers.ExpiredAt,
-    Headers.Ip,
-    Headers.UserId,
-    Headers.Auth,
-    Headers.UserAgent,
-    Headers.Origin,
     Headers.Signature,
-    Headers.PortfolioId,
-    Headers.OrganizationId,
-    Headers.Exchange
   )
-
-  private val notLoggedHeaders =
-    allowedHeaders -- Set(Headers.Ip, Headers.UserId, Headers.Auth, Headers.Origin, Headers.PortfolioId, Headers.OrganizationId, Headers.Exchange)
 
   def empty                         = emptyContext
   def withNewCorrelationId()        = emptyContext.withNewCorrelationId()
