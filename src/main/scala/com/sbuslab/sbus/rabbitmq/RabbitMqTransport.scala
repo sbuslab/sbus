@@ -130,7 +130,10 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
               durable    = true,
               exclusive  = false,
               autodelete = false,
-              args       = Map("x-dead-letter-exchange" → exchange.name)
+              args       = Map(
+                "x-dead-letter-exchange" → exchange.name,
+                "x-message-ttl"          → cfg.getDuration("message-ttl").toSeconds.toString
+              )
             )
           )
 
