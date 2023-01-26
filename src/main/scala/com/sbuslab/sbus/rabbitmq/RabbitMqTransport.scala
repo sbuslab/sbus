@@ -151,6 +151,7 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
         autodelete      = cfg.getBoolean("autodelete"),
         mandatory       = cfg.getBoolean("mandatory"),
         heartbeat       = cfg.getBoolean("heartbeat"),
+        messageTtl      = cfg.getDuration("message-ttl"),
         routingKeys     = Option(cfg.getStringList("routing-keys").asScala.toList).filter(_.nonEmpty)
       )
     }
@@ -442,7 +443,8 @@ class RabbitMqTransport(conf: Config, authProvider: AuthProvider, actorSystem: A
         passive    = false,
         durable    = channel.durable,
         exclusive  = channel.exclusive,
-        autodelete = channel.autodelete
+        autodelete = channel.autodelete,
+        args       = Map("x-message-ttl" → channel.messageTtl.toMillis.toString)
       ),
       routingKeys = channel.routingKeys.getOrElse(List(subscriptionName))
         .flatMap(rtKey ⇒
@@ -577,7 +579,8 @@ case class QueueConfig(
   autodelete: Boolean,
   exchange: String,
   exchangeType: String,
-  routingKey: String)
+  routingKey: String
+)
 
 case class SbusChannel(
   name: String,
@@ -591,7 +594,10 @@ case class SbusChannel(
   autodelete: Boolean,
   mandatory: Boolean,
   heartbeat: Boolean,
-  routingKeys: Option[List[String]])
+  messageTtl: java.time.Duration,
+  routingKeys: Option[List[String]]
+)
 
 case class SbusPing(
-  ping: Long)
+  ping: Long
+)
